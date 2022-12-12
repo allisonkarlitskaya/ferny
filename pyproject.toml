@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools >= 61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ferny"
+version = "0"
+
+[tool.mypy]
+mypy_path = 'src'
+
+[tool.pylint]
+max-line-length = 118
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+log_cli = true
+
+[tool.coverage.paths]
+source = ["src", "*/site-packages"]
+
+[tool.coverage.run]
+source_pkgs = ["ferny"]
+branch = true
