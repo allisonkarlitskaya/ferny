@@ -5,10 +5,6 @@ import mockssh
 
 import ferny
 
-USERS = {
-    'admin': 'test/id_rsa'
-}
-
 os.environ.pop('SSH_AUTH_SOCK')
 os.environ.pop('SSH_ASKPASS')
 
@@ -22,8 +18,9 @@ class MockAskpass(ferny.Askpass):
 
 
 class TestBasic(unittest.IsolatedAsyncioTestCase):
-    async def test_password(self):
-        with mockssh.Server(USERS) as server:
+    async def test_rsa_key(self):
+        users = {'admin': 'test/id_rsa'}
+        with mockssh.Server(users) as server:
             session = ferny.Session()
             await session.connect(server.host,
                                   port=server.port,
