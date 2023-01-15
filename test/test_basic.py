@@ -5,8 +5,8 @@ import mockssh
 
 import ferny
 
-os.environ.pop('SSH_AUTH_SOCK')
-os.environ.pop('SSH_ASKPASS')
+os.environ.pop('SSH_AUTH_SOCK', None)
+os.environ.pop('SSH_ASKPASS', None)
 
 
 class MockAskpass(ferny.Askpass):
