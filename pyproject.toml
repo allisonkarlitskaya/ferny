@@ -8,6 +8,9 @@ version = "0"
 
 [tool.mypy]
 mypy_path = 'src'
+[[tool.mypy.overrides]]
+module = ["mockssh"]
+ignore_missing_imports = true
 
 [tool.pylint]
 max-line-length = 118
