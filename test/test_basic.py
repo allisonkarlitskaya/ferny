@@ -1,6 +1,4 @@
-import contextlib
 import os
-import tempfile
 import unittest
 
 import mockssh
