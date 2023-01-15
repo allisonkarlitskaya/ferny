@@ -29,7 +29,7 @@ from typing import Callable, Mapping, Sequence, Optional
 
 prctl = ctypes.cdll.LoadLibrary('libc.so.6').prctl
 logger = logging.getLogger(__name__)
-RUN = os.environ['XDG_RUNTIME_DIR'] or '/run'
+RUN = os.environ.get('XDG_RUNTIME_DIR', '/run')
 FERNY_DIR = os.path.join(RUN, 'ferny')
 PR_SET_PDEATHSIG = 1
 
