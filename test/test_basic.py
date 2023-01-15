@@ -31,6 +31,9 @@ class TestBasic(unittest.IsolatedAsyncioTestCase):
             shutil.copy(key, dest)
             os.chmod(dest, 0o600)
 
+        kls.runtime_dir = tempfile.TemporaryDirectory(prefix='ferny-test-run.')
+        os.environ['XDG_RUNTIME_DIR'] = kls.runtime_dir.name
+
     async def test_rsa_key(self):
         users = {'admin': 'test/id_rsa'}
         with mockssh.Server(users) as server:
@@ -44,3 +47,4 @@ class TestBasic(unittest.IsolatedAsyncioTestCase):
                                   askpass_factory=MockAskpass)
             print('done!')
             await session.disconnect()
+            assert os.listdir(self.runtime_dir.name) == []
