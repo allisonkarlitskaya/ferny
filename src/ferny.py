@@ -30,6 +30,7 @@ from typing import Callable, Mapping, Sequence, Optional
 prctl = ctypes.cdll.LoadLibrary('libc.so.6').prctl
 logger = logging.getLogger(__name__)
 RUN = os.environ['XDG_RUNTIME_DIR'] or '/run'
+FERNY_DIR = os.path.join(RUN, 'ferny')
 PR_SET_PDEATHSIG = 1
 
 
@@ -170,7 +171,8 @@ class Session(SubprocessContext):
                       pkcs11: Optional[str] = None,
                       port: Optional[int] = None,
                       askpass_factory: Optional[Callable[[], Askpass]] = None) -> None:
-        self._controldir = tempfile.TemporaryDirectory(dir=f'{RUN}/ferny')
+        os.makedirs(FERNY_DIR, exist_ok=True)
+        self._controldir = tempfile.TemporaryDirectory(dir=FERNY_DIR)
         self._controlsock = f'{self._controldir.name}/socket'
 
         env = dict(os.environ)
