@@ -1,0 +1,29 @@
+name: CI
+on:
+  push:
+  pull_request:
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        container:
+          - registry.fedoraproject.org/fedora:latest
+    timeout-minutes: 10
+    container: ${{ matrix.container }}
+    steps:
+      - name: Clone repository
+        uses: actions/checkout@v3
+
+      - name: Install runtime and test dependencies
+        run: dnf install -y openssh-clients python3-mock-ssh-server python3-pytest python3-mypy python3-flake8
+
+      - name: Run unit tests
+        run: python3 -m pytest
+
+      - name: Run flake8
+        run: python3 -m flake8
+
+      - name: Run mypy
+        run: python3 -m mypy .
