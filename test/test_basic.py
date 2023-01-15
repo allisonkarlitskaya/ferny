@@ -25,6 +25,12 @@ class TestBasic(unittest.IsolatedAsyncioTestCase):
     async def test_password(self):
         with mockssh.Server(USERS) as server:
             session = ferny.Session()
-            await session.connect(server.host, port=server.port, configfile='none', options={'UserKnownHostsFile': '/dev/null'}, identity_file='test/id_rsa.enc', login_name='admin', askpass_factory=MockAskpass)
+            await session.connect(server.host,
+                                  port=server.port,
+                                  configfile='none',
+                                  options={'UserKnownHostsFile': '/dev/null'},
+                                  identity_file='test/id_rsa.enc',
+                                  login_name='admin',
+                                  askpass_factory=MockAskpass)
             print('done!')
             await session.disconnect()
