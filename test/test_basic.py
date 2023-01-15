@@ -41,7 +41,10 @@ class TestBasic(unittest.IsolatedAsyncioTestCase):
             await session.connect(server.host,
                                   port=server.port,
                                   configfile='none',
-                                  options={'UserKnownHostsFile': '/dev/null'},
+                                  options={
+                                      'UserKnownHostsFile': '/dev/null',
+                                      'StrictHostKeyChecking': 'no'
+                                  },
                                   identity_file=os.path.join(self.key_dir.name, 'id_rsa.enc'),
                                   login_name='admin',
                                   askpass_factory=MockAskpass)
