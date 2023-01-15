@@ -94,7 +94,7 @@ class Askpass(asyncio.StreamReaderProtocol):
 
         The message should always be displayed.
 
-        The expect expected response type depends on hint:
+        The expected response type depends on hint:
 
             - "confirm": ask for permission, returning "yes" if accepted
                 - example: authorizing agent operation
