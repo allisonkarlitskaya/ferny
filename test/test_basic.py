@@ -48,6 +48,5 @@ class TestBasic(unittest.IsolatedAsyncioTestCase):
                                   identity_file=os.path.join(self.key_dir.name, 'id_rsa.enc'),
                                   login_name='admin',
                                   askpass_factory=MockAskpass)
-            print('done!')
             await session.disconnect()
             assert os.listdir(self.runtime_dir.name) == []
