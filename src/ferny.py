@@ -204,6 +204,8 @@ class Session(SubprocessContext):
             loop = asyncio.get_running_loop()
             askpass_server = await loop.create_unix_server(askpass_factory, askpass_sock_path)
             env['SSH_ASKPASS'] = askpass_path
+            # don't require $DISPLAY; see ssh(1)
+            env['SSH_ASKPASS_REQUIRE'] = 'force'
         else:
             askpass_server = None
 
