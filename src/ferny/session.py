@@ -15,7 +15,6 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-import ast
 import asyncio
 import ctypes
 import logging
@@ -23,40 +22,17 @@ import os
 import shlex
 import signal
 import tempfile
-import textwrap
 
-from typing import Callable, Mapping, Sequence, Optional
+from typing import Mapping, Sequence, Optional
+
+from .interaction_agent import InteractionAgent, InteractionResponder
+from . import interaction_client
 
 prctl = ctypes.cdll.LoadLibrary('libc.so.6').prctl
 logger = logging.getLogger(__name__)
 RUN = os.environ.get('XDG_RUNTIME_DIR', '/run')
 FERNY_DIR = os.path.join(RUN, 'ferny')
 PR_SET_PDEATHSIG = 1
-
-
-class CreateWatcher:
-    path: str
-
-    def __init__(self, path: str):
-        self.path = path
-
-    async def wait(self):
-        raise NotImplementedError
-
-    async def watch(self):
-        logger.debug('%s: waiting for %s', self, self.path)
-        while not os.path.exists(self.path):
-            await self.wait()
-        logger.debug('%s: %s exists.  returning.', self, self.path)
-
-
-class PollingCreateWatcher(CreateWatcher):
-    async def wait(self):
-        logger.debug('%s: sleeping', self)
-        await asyncio.sleep(0.1)
-
-
-# TODO: CreateWatcher implementation backed by systemd_ctypes inotify
 
 
 class SubprocessContext:
@@ -89,130 +65,50 @@ class SubprocessContext:
         return env
 
 
-class Askpass(asyncio.StreamReaderProtocol):
-    async def askpass(self, message: str, hint: str) -> Optional[str]:
-        """Prompt the user for an authentication or confirmation interaction.
-
-        The message should always be displayed.
-
-        The expected response type depends on hint:
-
-            - "confirm": ask for permission, returning "yes" if accepted
-                - example: authorizing agent operation
-            - "notify": show a request without need for a response
-                - example: please touch your authentication token
-            - otherwise: return a password or other form of text token
-                - examples: enter password, unlock private key
-
-        In any case, the function should properly handle cancellation.  For the
-        "notify" case, this will be the normal way to dismiss the dialog.
-        """
-        raise NotImplementedError
-
-    async def _connection_cb(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
-        logger.debug('got askpass connection')
-        message, hint = ast.literal_eval((await reader.readline()).decode('utf-8'))
-
-        answer = await self.askpass(message, hint)
-
-        if answer:
-            result = f'{answer}\n', 0
-        else:
-            result = '', 1
-
-        writer.write(f'{result!r}'.encode('utf-8'))
-        await writer.drain()
-        writer.close()
-        logger.debug('sent askpass result %s', result)
-
-    # A small hack: the default StreamReaderProtocol doesn't cancel the task
-    # when the remote sends EOF, but for our case, that means that the askpass
-    # client got killed and we want to cancel the request.
-    _task: Optional[asyncio.Task]
-
-    def __init__(self):
-        super().__init__(asyncio.StreamReader(), self._connection_cb)
-
-    def eof_received(self) -> bool:
-        super().eof_received()
-        if self._task is not None and not self._task.done():
-            logger.debug('cancelling %s task', self)
-            self._task.cancel()
-        return False
-
-
-class Session(SubprocessContext):
+class Session(SubprocessContext, InteractionResponder):
     # Set after .connect() called, even if failed
-    _controldir: Optional[tempfile.TemporaryDirectory]
-    _controlsock: Optional[str]
-    _process: Optional[asyncio.subprocess.Process]
+    _controldir: Optional[tempfile.TemporaryDirectory] = None
+    _controlsock: Optional[str] = None
 
     # Set if connected, else None
-    _communicate_task: Optional[asyncio.Task]
-
-    async def await_exit(self) -> None:
-        assert self._process is not None
-        stdout, stderr = await self._process.communicate()
-
-        if self._process.returncode:
-            raise RuntimeError(stderr)
-
-    async def await_socket(self) -> None:
-        assert self._controlsock is not None
-        watcher = PollingCreateWatcher(self._controlsock)
-        await watcher.watch()
+    _process: Optional[asyncio.subprocess.Process] = None
 
     async def connect(self,
                       destination: str,
+                      handle_host_key: bool = False,
                       configfile: Optional[str] = None,
                       identity_file: Optional[str] = None,
                       login_name: Optional[str] = None,
                       options: Optional[Mapping[str, str]] = None,
                       pkcs11: Optional[str] = None,
                       port: Optional[int] = None,
-                      askpass_factory: Optional[Callable[[], Askpass]] = None) -> None:
+                      interaction_responder: Optional[InteractionResponder] = None) -> None:
         os.makedirs(FERNY_DIR, exist_ok=True)
         self._controldir = tempfile.TemporaryDirectory(dir=FERNY_DIR)
         self._controlsock = f'{self._controldir.name}/socket'
+        askpass_path = f'{self._controldir.name}/askpass'
+
+        # In general, we can't guarantee an accessible and executable version
+        # of this file, but since it's small and we're making a temporary
+        # directory anyway, let's just copy it into place and use it from
+        # there.
+        fd = os.open(askpass_path, os.O_CREAT | os.O_WRONLY | os.O_CLOEXEC | os.O_EXCL, 0o777)
+        try:
+            os.write(fd, __loader__.get_data(interaction_client.__file__))  # type: ignore
+        finally:
+            os.close(fd)
 
         env = dict(os.environ)
-
-        if askpass_factory:
-            askpass_path = f'{self._controldir.name}/askpass'
-            askpass_sock_path = f'{self._controldir.name}/auth'
-
-            with open(os.open(askpass_path, os.O_WRONLY | os.O_CREAT, 0o700), 'w') as file:
-                file.write(textwrap.dedent(rf"""
-                    #!/usr/bin/python3
-
-                    import os
-                    import ast
-                    import socket
-                    import sys
-
-                    sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-                    sock.connect({askpass_sock_path!r})
-                    args = sys.argv[1], os.environ.get('SSH_ASKPASS_PROMPT', '')
-                    sock.send(f'{{args!r}}\n'.encode('utf-8'))
-                    answer, status = ast.literal_eval(sock.recv(100000).decode('utf-8'))
-                    sys.stdout.write(answer)
-                    sys.exit(status)
-                """).lstrip())
-
-            # See comments above for why we can't use vanilla
-            # StreamReaderProtocol via asyncio.start_unix_server().
-            loop = asyncio.get_running_loop()
-            askpass_server = await loop.create_unix_server(askpass_factory, askpass_sock_path)
-            env['SSH_ASKPASS'] = askpass_path
-            # don't require $DISPLAY; see ssh(1)
-            env['SSH_ASKPASS_REQUIRE'] = 'force'
-        else:
-            askpass_server = None
+        env['SSH_ASKPASS'] = askpass_path
+        env['SSH_ASKPASS_REQUIRE'] = 'force'
 
         args = [
             '-M',
             '-N',
             '-S', self._controlsock,
+            '-o', 'PermitLocalCommand=yes',
+            '-o', f'LocalCommand={askpass_path}',
+            '-o', 'StrictHostKeyChecking=yes',
         ]
 
         if configfile is not None:
@@ -234,37 +130,38 @@ class Session(SubprocessContext):
         if login_name is not None:
             args.append(f'-l{login_name}')
 
+        if handle_host_key:
+            args.extend([
+                '-o', f'KnownHostsCommand={askpass_path} %I %H %t %K %f',
+                '-o', 'GlobalKnownHostsFile=none',
+                '-o', 'UserKnownHostsFile=none',
+            ])
+
+        agent = InteractionAgent(interaction_responder or self)
+
         # SSH_ASKPASS_REQUIRE is not generally available, so use setsid
-        self._process = await asyncio.create_subprocess_exec(
+        process = await asyncio.create_subprocess_exec(
             *('/usr/bin/ssh', *args, destination), env=env,
             start_new_session=True, stdin=asyncio.subprocess.DEVNULL,
-            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+            stdout=asyncio.subprocess.DEVNULL, stderr=agent,  # type: ignore
             preexec_fn=lambda: prctl(PR_SET_PDEATHSIG, signal.SIGKILL))
 
-        communicate_task = asyncio.create_task(self.await_exit())
-        connection_task = asyncio.create_task(self.await_socket())
-
-        done, pending = await asyncio.wait((communicate_task, connection_task),
-                                           return_when=asyncio.FIRST_COMPLETED)
-
-        if askpass_server is not None:
-            askpass_server.close()
-
-        if communicate_task.done():
-            connection_task.cancel()
-            communicate_task.result()  # will throw
-        else:
-            assert connection_task.done()
-            connection_task.result()  # None
-            self._communicate_task = communicate_task
+        # This is tricky: we need to clean up the subprocess, but only in case
+        # if failure.  Otherwise, we keep it around.
+        try:
+            await agent.communicate()
+            assert os.path.exists(self._controlsock)
+            self._process = process
+        except BaseException:
+            await process.wait()
+            raise
 
     def is_connected(self) -> bool:
-        return self._communicate_task is not None
+        return self._process is not None
 
     async def wait(self) -> None:
-        if self._communicate_task is not None:
-            await self._communicate_task
-            self._communicate_task.result()
+        assert self._process is not None
+        await self._process.wait()
 
     def exit(self) -> None:
         assert self._process is not None
