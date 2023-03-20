@@ -1,5 +1,6 @@
 #!/usr/bin/python3
 
+import array
 import os
 import socket
 import sys
@@ -11,7 +12,9 @@ def interact(stderr_fd: int, stdout_fd: int, *data: object) -> int:
     ours, theirs = socket.socketpair()
 
     with theirs, socket.fromfd(stderr_fd, socket.AF_UNIX, socket.SOCK_STREAM) as stderr:
-        socket.send_fds(stderr, [packet], [theirs.fileno(), stdout_fd])
+        # socket.send_fds(stderr, [packet], [theirs.fileno(), stdout_fd])
+        fds = [theirs.fileno(), stdout_fd]
+        stderr.sendmsg([packet], [(socket.SOL_SOCKET, socket.SCM_RIGHTS, array.array("i", fds))])
 
     with ours:
         return int(ours.recv(16) or b'1')
