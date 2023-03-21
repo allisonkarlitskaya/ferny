@@ -30,6 +30,25 @@ class SshError(Exception):
     pass
 
 
+try:
+    recv_fds = socket.recv_fds
+    send_fds = socket.send_fds
+except AttributeError:
+    # Python < 3.9
+    import array
+
+    def recv_fds(sock, bufsize, maxfds, flags=0):
+        fds = array.array("i")
+        msg, ancdata, flags, addr = sock.recvmsg(bufsize, socket.CMSG_LEN(maxfds * fds.itemsize))
+        for cmsg_level, cmsg_type, cmsg_data in ancdata:
+            if (cmsg_level == socket.SOL_SOCKET and cmsg_type == socket.SCM_RIGHTS):
+                fds.frombytes(cmsg_data[:len(cmsg_data) - (len(cmsg_data) % fds.itemsize)])
+        return msg, list(fds), flags, addr
+
+    def send_fds(sock, buffers, fds, flags=0, address=None):
+        return sock.sendmsg(buffers, [(socket.SOL_SOCKET, socket.SCM_RIGHTS, array.array("i", fds))])
+
+
 # https://discuss.python.org/t/expanding-asyncio-support-for-socket-apis/19277/8
 async def wait_readable(loop: asyncio.AbstractEventLoop, fd: int) -> None:
     future = loop.create_future()
@@ -189,7 +208,7 @@ class InteractionAgent:
         if len(interaction.args) == 0:
             # LocalCommand or send-stderr
             if interaction.cmd == 'send-stderr':
-                socket.send_fds(interaction.status, [b'\0'], [2])
+                send_fds(interaction.status, [b'\0'], [2])
             self.connected = True
             interaction.done()
 
@@ -220,14 +239,18 @@ class InteractionAgent:
     async def communicate(self) -> None:
         self.theirs.close()
 
-        loop = asyncio.get_running_loop()
+        try:
+            loop = asyncio.get_running_loop()
+        except AttributeError:
+            # Python 3.6
+            loop = asyncio.get_event_loop()
         fds: List[int] = []
 
         while not self.connected:
             await wait_readable(loop, self.ours.fileno())
             try:
                 # We handle fds very carefully to avoid leaking them, even in case of exceptions
-                data, fds, _flags, _addr = socket.recv_fds(self.ours, 4096, 10)
+                data, fds, _flags, _addr = recv_fds(self.ours, 4096, 10)
                 if not data:
                     raise SshError(self.buffer.decode('utf-8').strip())
                 self.buffer += data
