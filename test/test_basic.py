@@ -1,6 +1,5 @@
 import glob
 import os
-import unittest
 import shutil
 import tempfile
 
@@ -31,24 +30,32 @@ class MockResponder(ferny.InteractionResponder):
         self.passphrase = passphrase
 
 
+@pytest.fixture(scope='class')
+def key_dir():
+    # git does not track file permissions, and SSH fails on group/world readability
+    _key_dir = tempfile.TemporaryDirectory(prefix='ferny-test-keys.')
+    # copy all test/id_* files to the temporary directory with 0600 permissions
+    for key in glob.glob('test/id_*'):
+        dest = os.path.join(_key_dir.name, os.path.basename(key))
+        shutil.copy(key, dest)
+        os.chmod(dest, 0o600)
+
+    return _key_dir
+
+
+@pytest.fixture()
+def runtime_dir():
+    d = tempfile.TemporaryDirectory(prefix='ferny-test-run.')
+    os.environ['XDG_RUNTIME_DIR'] = d.name
+    return d
+
+
 # these both come from mockssh and aren't interesting to us
 @pytest.mark.filterwarnings('ignore:.*setDaemon.* is deprecated:DeprecationWarning')
 @pytest.mark.filterwarnings('ignore::pytest.PytestUnhandledThreadExceptionWarning')
-class TestBasic(unittest.IsolatedAsyncioTestCase):
-    @classmethod
-    def setUpClass(kls):
-        # git does not track file permissions, and SSH fails on group/world readability
-        kls.key_dir = tempfile.TemporaryDirectory(prefix='ferny-test-keys.')
-        # copy all test/id_* files to the temporary directory with 0600 permissions
-        for key in glob.glob('test/id_*'):
-            dest = os.path.join(kls.key_dir.name, os.path.basename(key))
-            shutil.copy(key, dest)
-            os.chmod(dest, 0o600)
-
-        kls.runtime_dir = tempfile.TemporaryDirectory(prefix='ferny-test-run.')
-        os.environ['XDG_RUNTIME_DIR'] = kls.runtime_dir.name
-
-    async def run_test(self, accept_hostkey, passphrase):
+class TestBasic:
+    @staticmethod
+    async def run_test(key_dir, runtime_dir, accept_hostkey, passphrase):
         responder = MockResponder(accept_hostkey, passphrase)
         users = {'admin': 'test/id_rsa'}
         with mockssh.Server(users) as server:
@@ -57,28 +64,33 @@ class TestBasic(unittest.IsolatedAsyncioTestCase):
                                   port=server.port,
                                   configfile='none',
                                   handle_host_key=True,
-                                  identity_file=os.path.join(self.key_dir.name, 'id_rsa.enc'),
+                                  identity_file=os.path.join(key_dir.name, 'id_rsa.enc'),
                                   login_name='admin', interaction_responder=responder)
-            assert os.listdir(self.runtime_dir.name) == []
+            assert os.listdir(runtime_dir.name) == []
             await session.disconnect()
 
-    async def test_reject_hostkey(self):
-        with self.assertRaises(ferny.SshError) as raises:
-            await self.run_test(False, FloatingPointError())
-        assert str(raises.exception) == 'Host key verification failed.'
+    @pytest.mark.asyncio
+    async def test_reject_hostkey(self, key_dir, runtime_dir):
+        with pytest.raises(ferny.SshError) as raises:
+            await self.run_test(key_dir, runtime_dir, False, FloatingPointError())
+        assert str(raises.value) == 'Host key verification failed.'
 
-    async def test_raise_hostkey(self):
-        with self.assertRaises(ZeroDivisionError):
-            await self.run_test(ZeroDivisionError(), FloatingPointError())
+    @pytest.mark.asyncio
+    async def test_raise_hostkey(self, key_dir, runtime_dir):
+        with pytest.raises(ZeroDivisionError):
+            await self.run_test(key_dir, runtime_dir, ZeroDivisionError(), FloatingPointError())
 
-    async def test_raise_passphrase(self):
-        with self.assertRaises(FloatingPointError):
-            await self.run_test(True, FloatingPointError())
+    @pytest.mark.asyncio
+    async def test_raise_passphrase(self, key_dir, runtime_dir):
+        with pytest.raises(FloatingPointError):
+            await self.run_test(key_dir, runtime_dir, True, FloatingPointError())
 
-    async def test_wrong_passphrase(self):
-        with self.assertRaises(ferny.SshError) as raises:
-            await self.run_test(True, 'xx')
-        assert 'Permission denied' in str(raises.exception)
+    @pytest.mark.asyncio
+    async def test_wrong_passphrase(self, key_dir, runtime_dir):
+        with pytest.raises(ferny.SshError) as raises:
+            await self.run_test(key_dir, runtime_dir, True, 'xx')
+        assert 'Permission denied' in str(raises.value)
 
-    async def test_correct_passphrase(self):
-        await self.run_test(True, 'passphrase')
+    @pytest.mark.asyncio
+    async def test_correct_passphrase(self, key_dir, runtime_dir):
+        await self.run_test(key_dir, runtime_dir, True, 'passphrase')
