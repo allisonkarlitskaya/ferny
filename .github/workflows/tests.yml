@@ -4,14 +4,10 @@ on:
   pull_request:
 
 jobs:
-  tests:
+  fedora:
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        container:
-          - registry.fedoraproject.org/fedora:latest
     timeout-minutes: 10
-    container: ${{ matrix.container }}
+    container: registry.fedoraproject.org/fedora:latest
     steps:
       - name: Clone repository
         uses: actions/checkout@v3
@@ -27,3 +23,24 @@ jobs:
 
       - name: Run mypy
         run: python3 -m mypy src/ferny
+
+  c8s:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    container: quay.io/centos/centos:stream8
+    steps:
+      - name: Clone repository
+        uses: actions/checkout@v3
+
+      - name: Install distro runtime and test dependencies
+        # we need EPEL for python3-paramiko (required by mock-ssh-server)
+        run: |
+          dnf install -y https://dl.fedoraproject.org/pub/epel/epel-release-latest-8.noarch.rpm
+          dnf install -y openssh-clients python3-paramiko python3-pip
+
+      # C8S does have python3-pytest, but it's too old for us
+      - name: Install pip test dependencies
+        run: pip3 install pytest pytest-asyncio mock-ssh-server
+
+      - name: Run unit tests
+        run: PYTHONPATH=src python3 -m pytest
