@@ -153,6 +153,11 @@ class Session(SubprocessContext, InteractionResponder):
             assert os.path.exists(self._controlsock)
             self._process = process
         except BaseException:
+            # If we get here because the InteractionResponder raised an
+            # exception then SSH might still be running, and may even attempt
+            # further interactions (ie: 2nd attempt for password).  We already
+            # have our exception and don't need any more info.  Kill it.
+            process.kill()
             await process.wait()
             raise
 
