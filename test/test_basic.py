@@ -14,6 +14,8 @@ os.environ.pop('SSH_ASKPASS', None)
 
 class MockResponder(ferny.InteractionResponder):
     async def do_askpass(self, messages, prompt, hint):
+        if 'fingerprint' in prompt:
+            return 'yes' if await self.do_hostkey(0, 0, 0, 0, 0) else 'no'
         assert 'passphrase' in prompt
         if isinstance(self.passphrase, Exception):
             raise self.passphrase
@@ -65,7 +67,9 @@ class TestBasic:
                                   configfile='none',
                                   handle_host_key=True,
                                   identity_file=os.path.join(key_dir.name, 'id_rsa.enc'),
-                                  login_name='admin', interaction_responder=responder)
+                                  login_name='admin',
+                                  options=dict(userknownhostsfile="/dev/null"),
+                                  interaction_responder=responder)
             assert os.listdir(runtime_dir.name) == []
             await session.disconnect()
 

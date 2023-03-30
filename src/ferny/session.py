@@ -17,10 +17,12 @@
 
 import asyncio
 import ctypes
+import functools
 import logging
 import os
 import shlex
 import signal
+import subprocess
 import tempfile
 
 from typing import Mapping, Sequence, Optional
@@ -33,6 +35,17 @@ logger = logging.getLogger(__name__)
 RUN = os.environ.get('XDG_RUNTIME_DIR', '/run')
 FERNY_DIR = os.path.join(RUN, 'ferny')
 PR_SET_PDEATHSIG = 1
+
+
+@functools.lru_cache()
+def get_features():
+    try:
+        output = subprocess.check_output(['ssh', '-G', '-'], universal_newlines=True)
+    except subprocess.ChildProcessError:
+        raise RuntimeError('Unable to detect SSH feature set.  '
+                           'ferny requires a version of OpenSSH which supports the -G argument, '
+                           'installed in the path as "ssh".')
+    return set(line.partition(' ')[0].lower() for line in output.splitlines())
 
 
 class SubprocessContext:
@@ -108,7 +121,6 @@ class Session(SubprocessContext, InteractionResponder):
             '-S', self._controlsock,
             '-o', 'PermitLocalCommand=yes',
             '-o', f'LocalCommand={askpass_path}',
-            '-o', 'StrictHostKeyChecking=yes',
         ]
 
         if configfile is not None:
@@ -130,11 +142,12 @@ class Session(SubprocessContext, InteractionResponder):
         if login_name is not None:
             args.append(f'-l{login_name}')
 
-        if handle_host_key:
+        if handle_host_key and 'knownhostscommand' in get_features():
             args.extend([
                 '-o', f'KnownHostsCommand={askpass_path} %I %H %t %K %f',
                 '-o', 'GlobalKnownHostsFile=none',
                 '-o', 'UserKnownHostsFile=none',
+                '-o', 'StrictHostKeyChecking=yes',
             ])
 
         agent = InteractionAgent(interaction_responder or self)
