@@ -76,7 +76,7 @@ class TestBasic:
 
     @pytest.mark.asyncio
     async def test_reject_hostkey(self, key_dir, runtime_dir):
-        with pytest.raises(ferny.SshError) as raises:
+        with pytest.raises(ferny.InteractionError) as raises:
             await self.run_test(key_dir, runtime_dir, False, FloatingPointError())
         assert str(raises.value) == 'Host key verification failed.'
 
@@ -92,7 +92,7 @@ class TestBasic:
 
     @pytest.mark.asyncio
     async def test_wrong_passphrase(self, key_dir, runtime_dir):
-        with pytest.raises(ferny.SshError) as raises:
+        with pytest.raises(ferny.InteractionError) as raises:
             await self.run_test(key_dir, runtime_dir, True, 'xx')
         assert 'Permission denied' in str(raises.value)
 

@@ -26,7 +26,7 @@ from typing import Coroutine, Callable, Dict, List, Optional, TextIO
 logger = logging.getLogger(__name__)
 
 
-class SshError(Exception):
+class InteractionError(Exception):
     pass
 
 
@@ -252,7 +252,7 @@ class InteractionAgent:
                 # We handle fds very carefully to avoid leaking them, even in case of exceptions
                 data, fds, _flags, _addr = recv_fds(self.ours, 4096, 10)
                 if not data:
-                    raise SshError(self.buffer.decode('utf-8').strip())
+                    raise InteractionError(self.buffer.decode('utf-8').strip())
                 self.buffer += data
                 if fds:
                     logger.debug('New interaction request incoming:')
