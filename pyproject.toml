@@ -16,6 +16,7 @@ ignore_missing_imports = true
 max-line-length = 118
 
 [tool.pytest.ini_options]
+addopts = ["--strict-markers"]
 pythonpath = ["src"]
 log_cli = true
 
