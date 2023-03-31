@@ -157,7 +157,10 @@ class Session(SubprocessContext, InteractionResponder):
             # exception then SSH might still be running, and may even attempt
             # further interactions (ie: 2nd attempt for password).  We already
             # have our exception and don't need any more info.  Kill it.
-            process.kill()
+            try:
+                process.kill()
+            except ProcessLookupError:
+                pass  # already exited?  good.
             await process.wait()
             raise
 
