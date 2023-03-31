@@ -27,8 +27,8 @@ import tempfile
 
 from typing import Mapping, Sequence, Optional
 
-from .interaction_agent import InteractionAgent, InteractionResponder
-from . import interaction_client
+from .interaction_agent import InteractionAgent, InteractionError, InteractionResponder
+from . import interaction_client, errors
 
 prctl = ctypes.cdll.LoadLibrary('libc.so.6').prctl
 logger = logging.getLogger(__name__)
@@ -167,6 +167,9 @@ class Session(SubprocessContext, InteractionResponder):
             await agent.communicate()
             assert os.path.exists(self._controlsock)
             self._process = process
+        except InteractionError as exc:
+            await process.wait()
+            raise errors.get_exception_for_ssh_stderr(str(exc))
         except BaseException:
             # If we get here because the InteractionResponder raised an
             # exception then SSH might still be running, and may even attempt
