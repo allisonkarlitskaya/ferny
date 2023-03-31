@@ -55,6 +55,7 @@ def runtime_dir():
 # these both come from mockssh and aren't interesting to us
 @pytest.mark.filterwarnings('ignore:.*setDaemon.* is deprecated:DeprecationWarning')
 @pytest.mark.filterwarnings('ignore::pytest.PytestUnhandledThreadExceptionWarning')
+@pytest.mark.filterwarnings('ignore::cryptography.utils.CryptographyDeprecationWarning')
 class TestBasic:
     @staticmethod
     async def run_test(key_dir, runtime_dir, accept_hostkey, passphrase):
