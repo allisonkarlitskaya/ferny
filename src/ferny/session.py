@@ -114,6 +114,8 @@ class Session(SubprocessContext, InteractionResponder):
         env = dict(os.environ)
         env['SSH_ASKPASS'] = askpass_path
         env['SSH_ASKPASS_REQUIRE'] = 'force'
+        # old SSH doesn't understand SSH_ASKPASS_REQUIRE and guesses based on DISPLAY instead
+        env['DISPLAY'] = '-'
 
         args = [
             '-M',
