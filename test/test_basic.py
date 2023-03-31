@@ -1,6 +1,7 @@
 import glob
 import os
 import shutil
+import socket
 import tempfile
 
 import mockssh
@@ -50,6 +51,21 @@ def runtime_dir():
     d = tempfile.TemporaryDirectory(prefix='ferny-test-run.')
     os.environ['XDG_RUNTIME_DIR'] = d.name
     return d
+
+
+@pytest.mark.asyncio
+async def test_connection_refused():
+    session = ferny.Session()
+    with pytest.raises(ConnectionRefusedError):
+        # hopefully nobody listens on 1...
+        await session.connect('127.0.0.1', port=1)
+
+
+@pytest.mark.asyncio
+async def test_dns_error():
+    session = ferny.Session()
+    with pytest.raises(socket.gaierror):
+        await session.connect('¡invalid hostname!')
 
 
 # these both come from mockssh and aren't interesting to us
