@@ -53,6 +53,20 @@ def runtime_dir():
     return d
 
 
+def test_feature_detection():
+    # should be case-insensitive, and pass
+    assert ferny.session.has_feature('userknownhostsfile')
+    assert ferny.session.has_feature('UserKnownHostsFile')
+
+    # yummy, but probably never exists
+    assert not ferny.session.has_feature('usersconehostsfile')
+    assert not ferny.session.has_feature('UserSconeHostsFile')
+
+    # requires a specific value
+    assert not ferny.session.has_feature('StrictHostKeyChecking')
+    assert ferny.session.has_feature('StrictHostKeyChecking', 'yes')
+
+
 @pytest.mark.asyncio
 async def test_connection_refused():
     session = ferny.Session()
