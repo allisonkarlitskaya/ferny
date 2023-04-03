@@ -38,14 +38,12 @@ PR_SET_PDEATHSIG = 1
 
 
 @functools.lru_cache()
-def get_features():
+def has_feature(feature: str, teststr: str = 'x') -> bool:
     try:
-        output = subprocess.check_output(['ssh', '-G', '-'], universal_newlines=True)
-    except subprocess.ChildProcessError:
-        raise RuntimeError('Unable to detect SSH feature set.  '
-                           'ferny requires a version of OpenSSH which supports the -G argument, '
-                           'installed in the path as "ssh".')
-    return set(line.partition(' ')[0].lower() for line in output.splitlines())
+        subprocess.check_output(['ssh', f'-o{feature} {teststr}', '-G', '-'], stderr=subprocess.DEVNULL)
+        return True
+    except subprocess.CalledProcessError:
+        return False
 
 
 class SubprocessContext:
@@ -144,7 +142,7 @@ class Session(SubprocessContext, InteractionResponder):
         if login_name is not None:
             args.append(f'-l{login_name}')
 
-        if handle_host_key and 'knownhostscommand' in get_features():
+        if handle_host_key and has_feature('KnownHostsCommand'):
             args.extend([
                 '-o', f'KnownHostsCommand={askpass_path} %I %H %t %K %f',
                 '-o', 'GlobalKnownHostsFile=none',
