@@ -21,7 +21,7 @@ import logging
 import socket
 import os
 
-from typing import Coroutine, Callable, Dict, List, Optional, TextIO
+from typing import Coroutine, Callable, Dict, List, Optional, TextIO, Tuple
 
 logger = logging.getLogger(__name__)
 
@@ -185,6 +185,9 @@ class InteractionResponder:
         """
         return False
 
+    async def do_remote_request(self, messages: str, request: str, args: Tuple) -> bool:
+        return request == 'end'
+
 
 class InteractionAgent:
     responder: InteractionResponder
@@ -254,11 +257,24 @@ class InteractionAgent:
                 if not data:
                     raise InteractionError(self.buffer.decode('utf-8').strip())
                 self.buffer += data
-                if fds:
+                if fds:  # fd-based command (local)
                     logger.debug('New interaction request incoming:')
                     await Interaction.run(loop, self.buffer.decode('utf-8'), fds, self.do_interaction)
                     logger.debug('Interaction is complete')
                     self.buffer.clear()
+                elif b'\0\0\n' in self.buffer:  # non-fd command (remote)
+                    this, _, self.buffer = self.buffer.partition(b'\0\0\n')
+                    stderr, _, message = this.decode().partition('\0ferny\0')
+                    request, args = ast.literal_eval(message)
+                    logger.debug('Remote request: %s%s ("%s")', request, args, stderr)
+                    if await self.responder.do_remote_request(stderr, request, args):
+                        logger.debug('  remote request resulted in exit')
+                        break
+                else:
+                    logger.debug('Partial data %s', self.buffer)
+
             finally:
                 while fds:
                     os.close(fds.pop())
+
+        logger.debug('agent.communicate() complete.')
