@@ -130,3 +130,12 @@ class TestBasic:
     @pytest.mark.asyncio
     async def test_correct_passphrase(self, key_dir, runtime_dir):
         await self.run_test(key_dir, runtime_dir, True, 'passphrase')
+
+    @pytest.mark.asyncio
+    async def test_large_env(self, key_dir, runtime_dir):
+        orig = os.environ.copy()
+        os.environ['BLABBERMOUTH'] = 'bla' * 10000
+        try:
+            await self.run_test(key_dir, runtime_dir, True, 'passphrase')
+        finally:
+            os.environ = orig
