@@ -6,7 +6,7 @@ import socket
 import sys
 
 
-def interact(stderr_fd: int, stdout_fd: int, *data: object) -> int:
+def interact(stdout_fd: int, stderr_fd: int, *data: object) -> int:
     packet = f'\0ferny\0{repr(data)}'.encode('utf-8')
 
     ours, theirs = socket.socketpair()
@@ -21,7 +21,7 @@ def interact(stderr_fd: int, stdout_fd: int, *data: object) -> int:
 
 
 def main() -> None:
-    sys.exit(interact(2, 1, sys.argv, dict(os.environ)))
+    sys.exit(interact(sys.stdout.fileno(), sys.stderr.fileno(), sys.argv, dict(os.environ)))
 
 
 if __name__ == '__main__':
