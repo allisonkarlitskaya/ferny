@@ -9,13 +9,14 @@ from ferny.interaction_client import interact
 
 def test_basic():
     our_err, their_err = socket.socketpair()
+    our_in, their_in = os.pipe()
     our_out, their_out = os.pipe()
 
     interact_res = None
 
     def run_interact():
         nonlocal interact_res
-        interact_res = interact(their_out, their_err.fileno(), ['some', 'data'], {'answer': 42})
+        interact_res = interact(their_in, their_out, their_err.fileno(), ['some', 'data'], {'answer': 42})
 
     t_interact = threading.Thread(target=run_interact)
     t_interact.start()
@@ -36,13 +37,14 @@ def test_basic():
 
 def test_send_no_result():
     our_err, their_err = socket.socketpair()
+    our_in, their_in = os.pipe()
     our_out, their_out = os.pipe()
 
     interact_res = None
 
     def run_interact():
         nonlocal interact_res
-        interact_res = interact(their_out, their_err.fileno(), 'data')
+        interact_res = interact(their_in, their_out, their_err.fileno(), 'data')
 
     t_interact = threading.Thread(target=run_interact)
     t_interact.start()
@@ -58,4 +60,31 @@ def test_send_no_result():
 
     assert msg == b"\x00ferny\x00('data',)"
     # default result is 1
+    assert interact_res == 1
+
+
+def test_exit_on_stdin_eof():
+    our_err, their_err = socket.socketpair()
+    our_in, their_in = os.pipe()
+    our_out, their_out = os.pipe()
+
+    interact_res = None
+
+    def run_interact():
+        nonlocal interact_res
+        interact_res = interact(their_in, their_out, their_err.fileno(), 'data')
+
+    t_interact = threading.Thread(target=run_interact)
+    t_interact.start()
+    os.close(their_out)
+
+    # receive the two fds from the client
+    _msg, [res_fd, _res_out], _flags, _addr = recv_fds(our_err, 4096, 2)
+    their_err.close()
+
+    # close stdin to indicate cancelling, don't send a result
+    os.close(our_in)
+
+    t_interact.join()
+
     assert interact_res == 1
