@@ -7,7 +7,15 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ferny"
+description = "A Python API wrapped around ssh(1)"
+authors = [{name = "Allison Karlitskaya", email = "allison.karlitskaya@redhat.com"}]
+license = {file = "COPYING"}
+readme = "README.md"
+classifiers = ["License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)"]
 dynamic = ["version"]
+
+[project.urls]
+Home = "https://github.com/allisonkarlitskaya/ferny/"
 
 [tool.setuptools_scm]
 write_to = "src/ferny/_version.py"
