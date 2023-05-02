@@ -20,8 +20,9 @@ import asyncio
 import logging
 import socket
 import os
+import re
 
-from typing import Coroutine, Callable, Dict, List, Optional, TextIO, Tuple
+from typing import Dict, List, Optional, TextIO, Tuple
 
 logger = logging.getLogger(__name__)
 
@@ -49,101 +50,23 @@ except AttributeError:
         return sock.sendmsg(buffers, [(socket.SOL_SOCKET, socket.SCM_RIGHTS, array.array("i", fds))])
 
 
+def get_running_loop() -> asyncio.AbstractEventLoop:
+    try:
+        return asyncio.get_running_loop()
+    except AttributeError:
+        # Python 3.6
+        return asyncio.get_event_loop()
+
+
 # https://discuss.python.org/t/expanding-asyncio-support-for-socket-apis/19277/8
-async def wait_readable(loop: asyncio.AbstractEventLoop, fd: int) -> None:
+async def wait_readable(fd: int) -> None:
+    loop = get_running_loop()
     future = loop.create_future()
     loop.add_reader(fd, future.set_result, None)
     try:
         await future
     finally:
         loop.remove_reader(fd)
-
-
-class Interaction:
-    cmd: str
-    args: List[str]
-    env: Dict[str, str]
-    stderr: str
-    status: socket.socket
-    stdout: TextIO
-
-    def __init__(self, buffer: str, status: socket.socket, stdout: TextIO):
-        self.stderr, sep, details = buffer.rpartition('\0ferny\0')
-        assert sep, buffer
-        args, env = ast.literal_eval(details)
-
-        assert isinstance(args, list), args
-        assert isinstance(env, dict), dict
-        assert all(isinstance(item, str) for item in args), args
-        assert all(isinstance(key, str) for key in env.keys()), env
-        assert all(isinstance(val, str) for val in env.values()), env
-
-        self.cmd = args[0]
-        self.args, self.env = args[1:], env
-        self.status = status
-        self.stdout = stdout
-        logger.debug('  args=%s stderr=%s', self.args, self.stderr)
-
-    def writeline(self, line: str) -> None:
-        try:
-            # This is theoretically blocking, but it never will
-            self.stdout.write(line + '\n')
-            self.stdout.flush()
-        except (BrokenPipeError, ConnectionResetError):
-            pass  # happens if the client was killed
-
-    def done(self, returncode: int = 0) -> None:
-        try:
-            # This is theoretically blocking, but it never will
-            self.status.send(str(returncode).encode('ascii'))
-        except (BrokenPipeError, ConnectionResetError):
-            pass  # happens if the client was killed
-
-    def _task_done(self, task):
-        # We must do this from outside of the task so that it always runs when
-        # the task is done, even if an exception occurred.  If we fail to do
-        # this, then the wait_readable() will never return and we'll deadlock.
-        self.status.shutdown(socket.SHUT_WR)
-
-    @staticmethod
-    async def run(loop: asyncio.AbstractEventLoop,
-                  buffer: str,
-                  fds: List[int],
-                  func: Callable[['Interaction'], Coroutine]) -> None:
-        with socket.fromfd(fds[0], socket.AF_UNIX, socket.SOCK_STREAM) as status:
-            with open(fds[1], 'w', closefd=False) as stdout:
-                interaction = Interaction(buffer, status, stdout)
-                # This is tricky.
-                #
-                # We need to watch the status fd for readability to find out
-                # when the client program has exited.  That will happen either
-                # in response to our task being done (and the shutdown() call
-                # in _task_done) or in response to being killed from ssh.  That
-                # happens for some types of prompts like "please touch your
-                # hardware token".
-                #
-                # In case we got killed from ssh, and our own task is still
-                # running, we need to cancel it.  In any case, we need to
-                # collect the result of our task to make sure we propagate
-                # exceptions: it's part of our API that exceptions raised in
-                # the interaction responder can be caught by the caller to
-                # .connect().
-                #
-                # Note: we use a finally: block in case an exception (like
-                # KeyboardInterrupt) gets raised while awaiting readability.
-                # In that case, we are still responsible for collecting the
-                # result of the task.
-                task = loop.create_task(func(interaction))
-                task.add_done_callback(interaction._task_done)
-                try:
-                    await wait_readable(loop, status.fileno())
-                finally:
-                    if not task.done():
-                        task.cancel()
-                    try:
-                        await task
-                    except asyncio.CancelledError:
-                        pass
 
 
 class InteractionResponder:
@@ -185,19 +108,81 @@ class InteractionResponder:
         """
         return False
 
-    async def do_remote_request(self, messages: str, request: str, args: Tuple) -> bool:
-        return request == 'end'
+    async def do_custom_command(self, command: str, args: Tuple, fds: List[int], stderr: str) -> None:
+        """Handle a custom command.
+
+        The command name, its arguments, the passed fds, and the stderr leading
+        up to the command invocation are all provided.
+
+        See doc/interaction-protocol.md
+        """
+
+    async def _askpass_task(self, args: List[str], env: Dict[str, str],
+                            status: TextIO, stdout: TextIO, stderr: str) -> None:
+        logger.debug('_askpass_task(%s, %d, %s, %s, %s)', args, len(env), status, stdout, stderr)
+
+        if len(args) == 2:
+            # normal askpass
+            answer = await self.do_askpass(stderr, args[1], env.get('SSH_ASKPASS_PROMPT', ''))
+            if answer is not None:
+                print(answer, file=stdout)
+                print(0, file=status)
+
+        elif len(args) == 6:
+            # KnownHostsCommand
+            argv0, reason, host, algorithm, key, fingerprint = args
+            if reason in ['ADDRESS', 'HOSTNAME']:
+                if await self.do_hostkey(reason, host, algorithm, key, fingerprint):
+                    print(host, algorithm, key, file=stdout)
+            print(0, file=status)
+
+        else:
+            logger.error('Incorrect number of command-line arguments to ferny-askpass: %s', args)
+
+    async def _askpass_command(self, args: Tuple, fds: List[int], stderr: str) -> None:
+        logger.debug('_askpass_command(%s, %s, %s)', args, fds, stderr)
+        try:
+            argv, env = args
+            assert isinstance(argv, list)
+            assert all(isinstance(arg, str) for arg in argv)
+            assert isinstance(env, dict)
+            assert all(isinstance(key, str) and isinstance(val, str) for key, val in env.items())
+            assert len(fds) == 2
+        except (ValueError, TypeError, AssertionError) as exc:
+            logger.error('Invalid arguments to askpass interaction: %s, %s: %s', args, fds, exc)
+            return
+
+        with open(fds.pop(0), 'w') as status, open(fds.pop(0), 'w') as stdout:
+            # We want to run until either our askpass task is done or status_fd
+            # reads ready. Once either of those cases becomes true, we cancel the
+            # other task and collect results so that we propagate any exceptions
+            # that were raised.
+            loop = get_running_loop()
+            tasks = [loop.create_task(self._askpass_task(argv, env, status, stdout, stderr)),
+                     loop.create_task(wait_readable(status.fileno()))]
+            (done,), (pending,) = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+            logger.debug('do_askpass_command done waiting: done=%s pending=%s', done, pending)
+            pending.cancel()
+            await done
+
+    # This is the only "public" method on the responder.  It only gets called by the agent.
+    async def run_command(self, command: str, args: Tuple, fds: List[int], stderr: str) -> None:
+        logger.debug('run_command(%s, %s, %s, %s)', command, args, fds, stderr)
+        if command == 'ferny.askpass':
+            await self._askpass_command(args, fds, stderr)
+        else:
+            await self.do_custom_command(command, args, fds, stderr)
 
 
 class InteractionAgent:
     responder: InteractionResponder
     ours: socket.socket
     theirs: socket.socket
-    buffer: bytearray
+    buffer: bytes
     connected: bool
 
     def __init__(self, responder: InteractionResponder):
-        self.buffer = bytearray()
+        self.buffer = b''
         self.ours, self.theirs = socket.socketpair()
         self.connected = False
         self.responder = responder
@@ -205,73 +190,59 @@ class InteractionAgent:
     def fileno(self) -> int:
         return self.theirs.fileno()
 
-    async def do_interaction(self, interaction: Interaction) -> None:
-        logger.debug('running interaction %s %s', interaction.cmd, interaction.args)
+    async def invoke_command(self, stderr: bytes, command_blob: bytes, fds: List[int]) -> None:
+        logger.debug('invoke_command(%s, %s, %s)', stderr, command_blob, fds)
+        try:
+            command, args = ast.literal_eval(command_blob.decode('utf-8'))
+            if not isinstance(command, str) or not isinstance(args, tuple):
+                raise TypeError('Invalid argument types')
+        except (UnicodeDecodeError, SyntaxError, ValueError, TypeError) as exc:
+            logger.error('Received invalid ferny command: %s: %s', command_blob, exc)
+            return
 
-        if len(interaction.args) == 0:
-            # LocalCommand or send-stderr
-            if interaction.cmd == 'send-stderr':
-                send_fds(interaction.status, [b'\0'], [2])
+        if command == 'ferny.end':
+            logger.debug('  ferny.end -> setting connected=True')
             self.connected = True
-            interaction.done()
+            return
 
-        elif len(interaction.args) == 1:
-            # normal askpass
-            answer = await self.responder.do_askpass(interaction.stderr,
-                                                     interaction.args[0],
-                                                     interaction.env.get('SSH_ASKPASS_PROMPT', ''))
-            if answer is not None:
-                interaction.writeline(answer)
-                interaction.done()
-            else:
-                interaction.done(1)
+        await self.responder.run_command(command, args, fds, stderr.decode('utf-8'))
 
-        elif len(interaction.args) == 5:
-            # KnownHostsCommand
-            reason, host, algorithm, key, fingerprint = interaction.args
-            if reason in ['ADDRESS', 'HOSTNAME']:
-                if await self.responder.do_hostkey(reason, host, algorithm, key, fingerprint):
-                    interaction.writeline(f'{host} {algorithm} {key}\n')
-            interaction.done()
-
-        else:
-            assert False, interaction.args
-
-        logger.debug('returned result to client')
+    COMMAND_RE = re.compile(b'\0ferny\0([^\n]*)\0\0\n')
 
     async def communicate(self) -> None:
         self.theirs.close()
 
-        try:
-            loop = asyncio.get_running_loop()
-        except AttributeError:
-            # Python 3.6
-            loop = asyncio.get_event_loop()
+        # Various bits of code call .pop() on the list to claim a particular
+        # fd, but the ones that remain are our responsibility to close: we do
+        # that at the end of each loop iteration, in the finally: block.
         fds: List[int] = []
 
         while not self.connected:
-            await wait_readable(loop, self.ours.fileno())
             try:
-                # We handle fds very carefully to avoid leaking them, even in case of exceptions
+                # Wait for a message to come in, and read it
+                await wait_readable(self.ours.fileno())
                 data, fds, _flags, _addr = recv_fds(self.ours, 4096, 10)
                 if not data:
                     raise InteractionError(self.buffer.decode('utf-8').strip())
+
+                # Add to the buffer
                 self.buffer += data
-                if fds:  # fd-based command (local)
-                    logger.debug('New interaction request incoming:')
-                    await Interaction.run(loop, self.buffer.decode('utf-8'), fds, self.do_interaction)
-                    logger.debug('Interaction is complete')
-                    self.buffer.clear()
-                elif b'\0\0\n' in self.buffer:  # non-fd command (remote)
-                    this, _, self.buffer = self.buffer.partition(b'\0\0\n')
-                    stderr, _, message = this.decode().partition('\0ferny\0')
-                    request, args = ast.literal_eval(message)
-                    logger.debug('Remote request: %s%s ("%s")', request, args, stderr)
-                    if await self.responder.do_remote_request(stderr, request, args):
-                        logger.debug('  remote request resulted in exit')
-                        break
-                else:
-                    logger.debug('Partial data %s', self.buffer)
+
+                # Read zero or more "remote" messages
+                chunks = InteractionAgent.COMMAND_RE.split(self.buffer)
+                while len(chunks) > 1:
+                    await self.invoke_command(chunks[0], chunks[1], [])
+                    chunks = chunks[2:]
+                self.buffer = chunks[0]
+
+                # Maybe read one "local" message
+                if fds:
+                    assert self.buffer.endswith(b'\0'), self.buffer
+                    stderr = self.buffer[:-1]
+                    self.buffer = b''
+                    with open(fds.pop(0), 'rb') as command_channel:
+                        command = command_channel.read()
+                    await self.invoke_command(stderr, command, fds)
 
             finally:
                 while fds:
