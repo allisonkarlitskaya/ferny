@@ -17,6 +17,7 @@
 
 import ast
 import asyncio
+import contextlib
 import logging
 import socket
 import os
@@ -158,19 +159,34 @@ class InteractionResponder:
             return
 
         with open(fds.pop(0), 'w') as status, open(fds.pop(0), 'w') as stdout:
-            # We want to run until either our askpass task is done or status_fd
-            # reads ready. Once either of those cases becomes true, we cancel the
-            # other task and collect results so that we propagate any exceptions
-            # that were raised.
             loop = get_running_loop()
-            tasks = [loop.create_task(self._askpass_task(argv, env, status, stdout, stderr)),
-                     loop.create_task(wait_readable(status.fileno()))]
-            (done,), (pending,) = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
-            logger.debug('do_askpass_command done waiting: done=%s pending=%s', done, pending)
-            pending.cancel()
-            await done
+            future = loop.create_future()
 
-    # This is the only "public" method on the responder.  It only gets called by the agent.
+            # We want to wait until either of these things happen:
+            #   - our handler function finishes running
+            #   - status fd closes from the other side (ie: askpass was killed)
+            def _done(task=None):
+                if not future.done():
+                    future.set_result(None)
+
+            task = loop.create_task(self._askpass_task(argv, env, status, stdout, stderr))
+            task.add_done_callback(_done)
+            loop.add_reader(status, _done)
+
+            # We need to handle cancellation of our task — do our cleanup as a
+            # finally: block.
+            try:
+                await future
+            finally:
+                # If the status fd closed first then we need to cancel the
+                # askpass task.  In any case, we collect its result to make
+                # sure any exceptions get propagated.
+                loop.remove_reader(status)
+                with contextlib.suppress(asyncio.CancelledError):
+                    if not task.done():
+                        task.cancel()
+                    await task
+
     async def run_command(self, command: str, args: Tuple, fds: List[int], stderr: str) -> None:
         logger.debug('run_command(%s, %s, %s, %s)', command, args, fds, stderr)
         if command == 'ferny.askpass':
