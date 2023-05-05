@@ -62,7 +62,12 @@ def get_running_loop() -> asyncio.AbstractEventLoop:
 async def wait_readable(fd: int) -> None:
     loop = get_running_loop()
     future = loop.create_future()
-    loop.add_reader(fd, future.set_result, None)
+
+    def _ready():
+        if not future.cancelled():
+            future.set_result(None)
+    loop.add_reader(fd, _ready)
+
     try:
         await future
     finally:
