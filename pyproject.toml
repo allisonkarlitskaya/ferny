@@ -34,6 +34,9 @@ addopts = ["--strict-markers"]
 pythonpath = ["src"]
 log_cli = true
 
+[tool.ruff]
+line-length = 118
+
 [tool.coverage.paths]
 source = ["src", "*/site-packages"]
 
