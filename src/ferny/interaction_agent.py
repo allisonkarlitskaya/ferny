@@ -238,35 +238,36 @@ class InteractionAgent:
         # that at the end of each loop iteration, in the finally: block.
         fds: List[int] = []
 
-        while not self.connected:
-            try:
-                # Wait for a message to come in, and read it
-                await wait_readable(self.ours.fileno())
-                data, fds, _flags, _addr = recv_fds(self.ours, 4096, 10)
-                if not data:
-                    raise InteractionError(self.buffer.decode('utf-8').strip())
+        with self.ours:
+            while not self.connected:
+                try:
+                    # Wait for a message to come in, and read it
+                    await wait_readable(self.ours.fileno())
+                    data, fds, _flags, _addr = recv_fds(self.ours, 4096, 10)
+                    if not data:
+                        raise InteractionError(self.buffer.decode('utf-8').strip())
 
-                # Add to the buffer
-                self.buffer += data
+                    # Add to the buffer
+                    self.buffer += data
 
-                # Read zero or more "remote" messages
-                chunks = InteractionAgent.COMMAND_RE.split(self.buffer)
-                while len(chunks) > 1:
-                    await self.invoke_command(chunks[0], chunks[1], [])
-                    chunks = chunks[2:]
-                self.buffer = chunks[0]
+                    # Read zero or more "remote" messages
+                    chunks = InteractionAgent.COMMAND_RE.split(self.buffer)
+                    while len(chunks) > 1:
+                        await self.invoke_command(chunks[0], chunks[1], [])
+                        chunks = chunks[2:]
+                    self.buffer = chunks[0]
 
-                # Maybe read one "local" message
-                if fds:
-                    assert self.buffer.endswith(b'\0'), self.buffer
-                    stderr = self.buffer[:-1]
-                    self.buffer = b''
-                    with open(fds.pop(0), 'rb') as command_channel:
-                        command = command_channel.read()
-                    await self.invoke_command(stderr, command, fds)
+                    # Maybe read one "local" message
+                    if fds:
+                        assert self.buffer.endswith(b'\0'), self.buffer
+                        stderr = self.buffer[:-1]
+                        self.buffer = b''
+                        with open(fds.pop(0), 'rb') as command_channel:
+                            command = command_channel.read()
+                        await self.invoke_command(stderr, command, fds)
 
-            finally:
-                while fds:
-                    os.close(fds.pop())
+                finally:
+                    while fds:
+                        os.close(fds.pop())
 
         logger.debug('agent.communicate() complete.')

@@ -118,7 +118,6 @@ async def test_cancel_agent_on_init(event_loop):
 
 
 @pytest.mark.asyncio
-@pytest.mark.xfail
 async def test_cancel_before_interaction(event_loop):
     speak_slow = SpeakSlow()
     agent = ferny.InteractionAgent(speak_slow)
@@ -145,9 +144,5 @@ async def test_cancel_before_interaction(event_loop):
     with pytest.raises(asyncio.CancelledError):
         await communicate_task
 
-    # Drop the agent to close its fd
-    # XXX: ideally, this wouldn't be necessary...
-    # del agent
-
     # Make sure the subprocess cleanly exits and doesn't get stuck
-    await asyncio.wait_for(process.wait(), 5)
+    await process.wait()
