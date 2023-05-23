@@ -20,6 +20,9 @@ Home = "https://github.com/allisonkarlitskaya/ferny/"
 [tool.setuptools_scm]
 write_to = "src/ferny/_version.py"
 
+[tool.setuptoools.package-data]
+"ferny" = "py.typed"
+
 [tool.mypy]
 mypy_path = 'src'
 [[tool.mypy.overrides]]
@@ -35,7 +38,25 @@ pythonpath = ["src"]
 log_cli = true
 
 [tool.ruff]
+select = [
+    "ANN",
+    "A",
+    "B",
+    "E",
+    "F",
+    "G",
+    "I",
+]
+ignore = [
+    "A003",      # Class attribute is shadowing a python builtin
+    "ANN101",    # Missing type annotation for `self` in method (typing.Self is not in Python 3.6)
+    "B905",      # `zip()` without an explicit `strict=` parameter (not available in Python 3.6)
+]
+src = ["src"]
 line-length = 118
+
+[tool.ruff.flake8-annotations]
+allow-star-arg-any = true
 
 [tool.coverage.paths]
 source = ["src", "*/site-packages"]

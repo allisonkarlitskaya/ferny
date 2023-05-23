@@ -15,18 +15,18 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+import ctypes
 import errno
+import os
 import re
 import socket
-import os
-
 from typing import ClassVar, Iterable, Match, Optional, Pattern, Tuple
 
 
 class SshError(Exception):
     PATTERN: ClassVar[Pattern]
 
-    def __init__(self, match: Optional[Match], stderr: str):
+    def __init__(self, match: Optional[Match], stderr: str) -> None:
         super().__init__(match.group(0) if match is not None else stderr)
         self.stderr = stderr
 
@@ -34,7 +34,7 @@ class SshError(Exception):
 class AuthenticationError(SshError):
     PATTERN = re.compile(r'^([^:]+): Permission denied \(([^()]+)\)\.$', re.M)
 
-    def __init__(self, match: Match, stderr: str):
+    def __init__(self, match: Match, stderr: str) -> None:
         super().__init__(match, stderr)
         self.destination = match.group(1)
         self.methods = match.group(2).split(',')
@@ -48,7 +48,6 @@ class HostKeyError(SshError):
 # Functionality for mapping getaddrinfo()-family error messages to their
 # equivalent Python exceptions.
 def make_gaierror_map() -> Iterable[Tuple[str, int]]:
-    import ctypes
     libc = ctypes.CDLL(None)
     libc.gai_strerror.restype = ctypes.c_char_p
 

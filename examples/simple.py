@@ -1,11 +1,11 @@
 import argparse
 import asyncio
 import subprocess
-
 from typing import Optional
 
-import ferny
 from prompt_toolkit import PromptSession
+
+import ferny
 
 
 class PromptResponder(PromptSession, ferny.InteractionResponder):
@@ -16,7 +16,7 @@ class PromptResponder(PromptSession, ferny.InteractionResponder):
             raise RuntimeError('rejecting hostkey')
         return response.lower() in ['y', 'yes']
 
-    async def do_askpass(self, messages, prompt, hint) -> Optional[str]:
+    async def do_askpass(self, messages: str, prompt: str, hint: str) -> Optional[str]:
         print(messages)
         try:
             print('--askpass--')
