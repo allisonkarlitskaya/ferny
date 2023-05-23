@@ -146,3 +146,44 @@ async def test_cancel_before_interaction(event_loop):
 
     # Make sure the subprocess cleanly exits and doesn't get stuck
     await process.wait()
+
+
+class RaiseResponder(ferny.InteractionResponder):
+    async def do_askpass(self, messages, prompt, hint):
+        raise ValueError(messages, prompt, hint)
+
+    async def do_custom_command(self, command, args, fds, stderr):
+        raise ValueError(command, args, fds, stderr)
+
+
+@pytest.mark.asyncio
+async def test_temporary_askpass():
+    agent = ferny.InteractionAgent(RaiseResponder())
+
+    with ferny.temporary_askpass() as askpass:
+        process = await asyncio.create_subprocess_exec(askpass, 'can has pw?', stderr=agent)
+
+        with pytest.raises(ValueError) as raises:
+            await agent.communicate()
+        assert raises.value.args == ('', 'can has pw?', '')
+
+        await process.wait()
+
+    # outside with:, should no longer exit
+    assert not os.path.exists(askpass)
+
+
+@pytest.mark.asyncio
+async def test_command_template():
+    agent = ferny.InteractionAgent(RaiseResponder())
+    process = await asyncio.create_subprocess_exec(
+        'python3', '-c', '; '.join([
+            "import sys",
+            "command = 'bzzt'",
+            "args = (1, 2, 3)",
+            f"sys.stderr.write(f{ferny.COMMAND_TEMPLATE!r})"
+        ]), stderr=agent, env=dict(os.environ, PYTHONPATH=':'.join(sys.path)))
+    with pytest.raises(ValueError) as raises:
+        await agent.communicate()
+    assert raises.value.args == ('bzzt', (1, 2, 3), [], '')
+    await process.wait()

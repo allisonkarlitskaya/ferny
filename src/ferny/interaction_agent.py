@@ -15,17 +15,25 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+import array
 import ast
 import asyncio
 import contextlib
 import logging
-import socket
 import os
 import re
+import socket
+import tempfile
 
 from typing import Dict, List, Optional, TextIO, Tuple
 
+from . import interaction_client
+
 logger = logging.getLogger(__name__)
+
+
+COMMAND_RE = re.compile(b'\0ferny\0([^\n]*)\0\0\n')
+COMMAND_TEMPLATE = '\0ferny\0{(command, args)!r}\0\0\n'
 
 
 class InteractionError(Exception):
@@ -37,7 +45,6 @@ try:
     send_fds = socket.send_fds
 except AttributeError:
     # Python < 3.9
-    import array
 
     def recv_fds(sock, bufsize, maxfds, flags=0):
         fds = array.array("i")
@@ -228,8 +235,6 @@ class InteractionAgent:
 
         await self.responder.run_command(command, args, fds, stderr.decode('utf-8'))
 
-    COMMAND_RE = re.compile(b'\0ferny\0([^\n]*)\0\0\n')
-
     async def communicate(self) -> None:
         self.theirs.close()
 
@@ -251,7 +256,7 @@ class InteractionAgent:
                     self.buffer += data
 
                     # Read zero or more "remote" messages
-                    chunks = InteractionAgent.COMMAND_RE.split(self.buffer)
+                    chunks = COMMAND_RE.split(self.buffer)
                     while len(chunks) > 1:
                         await self.invoke_command(chunks[0], chunks[1], [])
                         chunks = chunks[2:]
@@ -271,3 +276,19 @@ class InteractionAgent:
                         os.close(fds.pop())
 
         logger.debug('agent.communicate() complete.')
+
+
+def write_askpass_to_tmpdir(tmpdir: str) -> str:
+    askpass_path = os.path.join(tmpdir, 'ferny-askpass')
+    fd = os.open(askpass_path, os.O_CREAT | os.O_WRONLY | os.O_CLOEXEC | os.O_EXCL | os.O_NOFOLLOW, 0o777)
+    try:
+        os.write(fd, __loader__.get_data(interaction_client.__file__))  # type: ignore
+    finally:
+        os.close(fd)
+    return askpass_path
+
+
+@contextlib.contextmanager
+def temporary_askpass(**kwargs):
+    with tempfile.TemporaryDirectory(**kwargs) as directory:
+        yield write_askpass_to_tmpdir(directory)

@@ -27,8 +27,8 @@ import tempfile
 
 from typing import Mapping, Sequence, Optional
 
-from .interaction_agent import InteractionAgent, InteractionError, InteractionResponder
-from . import interaction_client, errors
+from .interaction_agent import InteractionAgent, InteractionError, InteractionResponder, write_askpass_to_tmpdir
+from . import errors
 
 prctl = ctypes.cdll.LoadLibrary('libc.so.6').prctl
 logger = logging.getLogger(__name__)
@@ -97,17 +97,12 @@ class Session(SubprocessContext, InteractionResponder):
         os.makedirs(FERNY_DIR, exist_ok=True)
         self._controldir = tempfile.TemporaryDirectory(dir=FERNY_DIR)
         self._controlsock = f'{self._controldir.name}/socket'
-        askpass_path = f'{self._controldir.name}/askpass'
 
         # In general, we can't guarantee an accessible and executable version
         # of this file, but since it's small and we're making a temporary
         # directory anyway, let's just copy it into place and use it from
         # there.
-        fd = os.open(askpass_path, os.O_CREAT | os.O_WRONLY | os.O_CLOEXEC | os.O_EXCL, 0o777)
-        try:
-            os.write(fd, __loader__.get_data(interaction_client.__file__))  # type: ignore
-        finally:
-            os.close(fd)
+        askpass_path = write_askpass_to_tmpdir(self._controldir.name)
 
         env = dict(os.environ)
         env['SSH_ASKPASS'] = askpass_path
