@@ -64,3 +64,11 @@ source = ["src", "*/site-packages"]
 [tool.coverage.run]
 source_pkgs = ["ferny"]
 branch = true
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true
+exclude_lines = [
+  "pragma: no cover",  # default
+  "raise NotImplementedError",
+]
