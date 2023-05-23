@@ -1,6 +1,7 @@
 import asyncio
 import os
 import sys
+from typing import List, Tuple
 
 import pytest
 
@@ -10,7 +11,7 @@ import ferny
 class SpeakSlow(ferny.InteractionResponder):
     running = False
 
-    async def do_askpass(self, messages, prompt, hint):
+    async def do_askpass(self, messages: str, prompt: str, hint: str) -> None:
         assert messages == 'warning: it works\n'
         assert prompt == 'can has pw?'
         assert hint == ''
@@ -18,13 +19,13 @@ class SpeakSlow(ferny.InteractionResponder):
         try:
             self.running = True
             await asyncio.sleep(10000)
-            assert False, 'We should have been cancelled'
+            pytest.fail('We should have been cancelled')
         finally:
             self.running = False
 
 
 @pytest.mark.asyncio
-async def test_cancel_askpass(event_loop):
+async def test_cancel_askpass(event_loop: asyncio.AbstractEventLoop) -> None:
     speak_slow = SpeakSlow()
     agent = ferny.InteractionAgent(speak_slow)
     process = await asyncio.create_subprocess_shell(
@@ -46,7 +47,8 @@ async def test_cancel_askpass(event_loop):
         ''',
         stdin=asyncio.subprocess.PIPE,
         stdout=asyncio.subprocess.PIPE,
-        stderr=agent, env=dict(os.environ, PYTHONPATH=':'.join(sys.path)))
+        stderr=agent.fileno(),
+        env=dict(os.environ, PYTHONPATH=':'.join(sys.path)))
 
     with pytest.raises(ferny.InteractionError) as raises:
         await agent.communicate()
@@ -57,7 +59,7 @@ async def test_cancel_askpass(event_loop):
 
 
 @pytest.mark.asyncio
-async def test_cancel_agent_during_interaction(event_loop):
+async def test_cancel_agent_during_interaction(event_loop: asyncio.AbstractEventLoop) -> None:
     speak_slow = SpeakSlow()
     agent = ferny.InteractionAgent(speak_slow)
     process = await asyncio.create_subprocess_shell(
@@ -70,7 +72,8 @@ async def test_cancel_agent_during_interaction(event_loop):
         ''',
         stdin=asyncio.subprocess.PIPE,
         stdout=asyncio.subprocess.PIPE,
-        stderr=agent, env=dict(os.environ, PYTHONPATH=':'.join(sys.path)))
+        stderr=agent.fileno(),
+        env=dict(os.environ, PYTHONPATH=':'.join(sys.path)))
 
     # Communicate in a task
     communicate_task = event_loop.create_task(agent.communicate())
@@ -88,7 +91,7 @@ async def test_cancel_agent_during_interaction(event_loop):
 
 
 @pytest.mark.asyncio
-async def test_cancel_agent_on_init(event_loop):
+async def test_cancel_agent_on_init(event_loop: asyncio.AbstractEventLoop) -> None:
     speak_slow = SpeakSlow()
     agent = ferny.InteractionAgent(speak_slow)
     process = await asyncio.create_subprocess_shell(
@@ -101,13 +104,15 @@ async def test_cancel_agent_on_init(event_loop):
         ''',
         stdin=asyncio.subprocess.PIPE,
         stdout=asyncio.subprocess.PIPE,
-        stderr=agent, env=dict(os.environ, PYTHONPATH=':'.join(sys.path)))
+        stderr=agent.fileno(),
+        env=dict(os.environ, PYTHONPATH=':'.join(sys.path)))
 
     # Communicate in a task
     communicate_task = event_loop.create_task(agent.communicate())
 
     # Wait until we got our "init"
-    await process.stdout.readline() == b'init\n'
+    assert process.stdout is not None
+    assert await process.stdout.readline() == b'init\n'
 
     # Cancel the interaction
     communicate_task.cancel()
@@ -118,7 +123,7 @@ async def test_cancel_agent_on_init(event_loop):
 
 
 @pytest.mark.asyncio
-async def test_cancel_before_interaction(event_loop):
+async def test_cancel_before_interaction(event_loop: asyncio.AbstractEventLoop) -> None:
     speak_slow = SpeakSlow()
     agent = ferny.InteractionAgent(speak_slow)
     process = await asyncio.create_subprocess_shell(
@@ -131,7 +136,8 @@ async def test_cancel_before_interaction(event_loop):
         ''',
         stdin=asyncio.subprocess.PIPE,
         stdout=asyncio.subprocess.PIPE,
-        stderr=agent, env=dict(os.environ, PYTHONPATH=':'.join(sys.path)))
+        stderr=agent.fileno(),
+        env=dict(os.environ, PYTHONPATH=':'.join(sys.path)))
 
     # Communicate in a task
     communicate_task = event_loop.create_task(agent.communicate())
@@ -149,19 +155,19 @@ async def test_cancel_before_interaction(event_loop):
 
 
 class RaiseResponder(ferny.InteractionResponder):
-    async def do_askpass(self, messages, prompt, hint):
+    async def do_askpass(self, messages: str, prompt: str, hint: str) -> None:
         raise ValueError(messages, prompt, hint)
 
-    async def do_custom_command(self, command, args, fds, stderr):
+    async def do_custom_command(self, command: str, args: Tuple, fds: List[int], stderr: str) -> None:
         raise ValueError(command, args, fds, stderr)
 
 
 @pytest.mark.asyncio
-async def test_temporary_askpass():
+async def test_temporary_askpass() -> None:
     agent = ferny.InteractionAgent(RaiseResponder())
 
     with ferny.temporary_askpass() as askpass:
-        process = await asyncio.create_subprocess_exec(askpass, 'can has pw?', stderr=agent)
+        process = await asyncio.create_subprocess_exec(askpass, 'can has pw?', stderr=agent.fileno())
 
         with pytest.raises(ValueError) as raises:
             await agent.communicate()
@@ -174,7 +180,7 @@ async def test_temporary_askpass():
 
 
 @pytest.mark.asyncio
-async def test_command_template():
+async def test_command_template() -> None:
     agent = ferny.InteractionAgent(RaiseResponder())
     process = await asyncio.create_subprocess_exec(
         'python3', '-c', '; '.join([
@@ -182,7 +188,8 @@ async def test_command_template():
             "command = 'bzzt'",
             "args = (1, 2, 3)",
             f"sys.stderr.write(f{ferny.COMMAND_TEMPLATE!r})"
-        ]), stderr=agent, env=dict(os.environ, PYTHONPATH=':'.join(sys.path)))
+        ]), stderr=agent.fileno(),
+        env=dict(os.environ, PYTHONPATH=':'.join(sys.path)))
     with pytest.raises(ValueError) as raises:
         await agent.communicate()
     assert raises.value.args == ('bzzt', (1, 2, 3), [], '')

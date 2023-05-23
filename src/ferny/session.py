@@ -24,11 +24,10 @@ import shlex
 import signal
 import subprocess
 import tempfile
+from typing import Mapping, Optional, Sequence
 
-from typing import Mapping, Sequence, Optional
-
-from .interaction_agent import InteractionAgent, InteractionError, InteractionResponder, write_askpass_to_tmpdir
 from . import errors
+from .interaction_agent import InteractionAgent, InteractionError, InteractionResponder, write_askpass_to_tmpdir
 
 prctl = ctypes.cdll.LoadLibrary('libc.so.6').prctl
 logger = logging.getLogger(__name__)
@@ -162,7 +161,7 @@ class Session(SubprocessContext, InteractionResponder):
             self._process = process
         except InteractionError as exc:
             await process.wait()
-            raise errors.get_exception_for_ssh_stderr(str(exc))
+            raise errors.get_exception_for_ssh_stderr(str(exc)) from None
         except BaseException:
             # If we get here because the InteractionResponder raised an
             # exception then SSH might still be running, and may even attempt

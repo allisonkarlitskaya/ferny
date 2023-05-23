@@ -24,8 +24,7 @@ import os
 import re
 import socket
 import tempfile
-
-from typing import Dict, List, Optional, TextIO, Tuple
+from typing import Any, Dict, Generator, List, Optional, TextIO, Tuple
 
 from . import interaction_client
 
@@ -42,20 +41,18 @@ class InteractionError(Exception):
 
 try:
     recv_fds = socket.recv_fds
-    send_fds = socket.send_fds
 except AttributeError:
     # Python < 3.9
 
-    def recv_fds(sock, bufsize, maxfds, flags=0):
+    def recv_fds(
+        sock: socket.socket, bufsize: int, maxfds: int, flags: int = 0
+    ) -> Tuple[bytes, List[int], int, None]:
         fds = array.array("i")
         msg, ancdata, flags, addr = sock.recvmsg(bufsize, socket.CMSG_LEN(maxfds * fds.itemsize))
         for cmsg_level, cmsg_type, cmsg_data in ancdata:
             if (cmsg_level == socket.SOL_SOCKET and cmsg_type == socket.SCM_RIGHTS):
                 fds.frombytes(cmsg_data[:len(cmsg_data) - (len(cmsg_data) % fds.itemsize)])
         return msg, list(fds), flags, addr
-
-    def send_fds(sock, buffers, fds, flags=0, address=None):
-        return sock.sendmsg(buffers, [(socket.SOL_SOCKET, socket.SCM_RIGHTS, array.array("i", fds))])
 
 
 def get_running_loop() -> asyncio.AbstractEventLoop:
@@ -71,7 +68,7 @@ async def wait_readable(fd: int) -> None:
     loop = get_running_loop()
     future = loop.create_future()
 
-    def _ready():
+    def _ready() -> None:
         if not future.cancelled():
             future.set_result(None)
     loop.add_reader(fd, _ready)
@@ -172,7 +169,7 @@ class InteractionResponder:
             # We want to wait until either of these things happen:
             #   - our handler function finishes running
             #   - status fd closes from the other side (ie: askpass was killed)
-            def _done(task=None):
+            def _done(task: Optional[asyncio.Task] = None) -> None:
                 if not future.done():
                     future.set_result(None)
 
@@ -209,7 +206,7 @@ class InteractionAgent:
     buffer: bytes
     connected: bool
 
-    def __init__(self, responder: InteractionResponder):
+    def __init__(self, responder: InteractionResponder) -> None:
         self.buffer = b''
         self.ours, self.theirs = socket.socketpair()
         self.connected = False
@@ -289,6 +286,6 @@ def write_askpass_to_tmpdir(tmpdir: str) -> str:
 
 
 @contextlib.contextmanager
-def temporary_askpass(**kwargs):
+def temporary_askpass(**kwargs: Any) -> Generator[str, None, None]:
     with tempfile.TemporaryDirectory(**kwargs) as directory:
         yield write_askpass_to_tmpdir(directory)
