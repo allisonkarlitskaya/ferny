@@ -128,7 +128,14 @@ class TestBasic:
     async def test_reject_hostkey(self, key_dir: pathlib.Path, runtime_dir: pathlib.Path) -> None:
         with pytest.raises(ferny.HostKeyError) as raises:
             await self.run_test(key_dir, runtime_dir, False, FloatingPointError())
-        assert str(raises.value) == 'Host key verification failed.'
+        if ferny.session.has_feature('KnownHostsCommand'):
+            # on modern OSes we get a specific error message
+            assert isinstance(raises.value, ferny.UnknownHostKeyError)
+            assert 'No RSA host key is known for [127.0.0.1]:' in str(raises.value)
+            assert 'Host key verification failed.' in str(raises.value)
+        else:
+            # on old OSes we only get a generic error
+            assert str(raises.value) == 'Host key verification failed.'
 
     @pytest.mark.asyncio
     async def test_raise_hostkey(self, key_dir: pathlib.Path, runtime_dir: pathlib.Path) -> None:

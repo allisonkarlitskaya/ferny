@@ -41,8 +41,18 @@ class AuthenticationError(SshError):
         self.message = match.group(0)
 
 
+# generic host key error for OSes without KnownHostsCommand support
 class HostKeyError(SshError):
     PATTERN = re.compile(r'^Host key verification failed.$', re.M)
+
+
+# specific errors for OSes with KnownHostsCommand
+class UnknownHostKeyError(HostKeyError):
+    PATTERN = re.compile(r'^No .* host key is known.*Host key verification failed.$', re.S | re.M)
+
+
+class ChangedHostKeyError(HostKeyError):
+    PATTERN = re.compile(r'warning.*remote host identification has changed', re.I)
 
 
 # Functionality for mapping getaddrinfo()-family error messages to their
@@ -90,7 +100,8 @@ oserror_subclass_map = dict((errnum, cls) for cls, errnum in [
 
 
 def get_exception_for_ssh_stderr(stderr: str) -> Exception:
-    for ssh_cls in [AuthenticationError, HostKeyError]:
+    # check for the specific error messages first, then for generic HostKeyError
+    for ssh_cls in [AuthenticationError, ChangedHostKeyError, UnknownHostKeyError, HostKeyError]:
         match = ssh_cls.PATTERN.search(stderr)
         if match is not None:
             return ssh_cls(match, stderr)
