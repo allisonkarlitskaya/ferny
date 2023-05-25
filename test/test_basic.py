@@ -27,6 +27,8 @@ class MockResponder(ferny.InteractionResponder):
     accept_hostkey: Union[Exception, bool]
 
     async def do_askpass(self, messages: str, prompt: str, hint: str) -> Optional[str]:
+        # this happens on RHEL 8 which doesn't have KnownHostKey support; and everywhere with
+        # handle_host_key=False, then this callback receives *every* agent interaction
         if 'fingerprint' in prompt:
             return 'yes' if await self.do_hostkey('', '', '', '', '') else 'no'
         assert 'passphrase' in prompt
@@ -108,6 +110,7 @@ class TestBasic:
         accept_hostkey: Union[Exception, bool],
         passphrase: Union[Exception, str],
         known_host_key: Optional[str] = None,
+        handle_host_key: bool = False,
     ) -> None:
         responder = MockResponder(accept_hostkey, passphrase)
         users = {'admin': 'test/id_rsa'}
@@ -126,7 +129,7 @@ class TestBasic:
                 server.host,
                 port=server.port,
                 configfile='none',
-                handle_host_key=True,
+                handle_host_key=handle_host_key,
                 identity_file=os.path.join(key_dir, 'id_rsa.enc'),
                 login_name='admin',
                 options=dict(userknownhostsfile=str(known_hosts)),
@@ -141,10 +144,14 @@ class TestBasic:
             assert os.listdir(runtime_dir) == []
             await session.disconnect()
 
+    #
+    # with handling host keys
+    #
+
     @pytest.mark.asyncio
     async def test_reject_hostkey(self, key_dir: pathlib.Path, runtime_dir: pathlib.Path) -> None:
         with pytest.raises(ferny.HostKeyError) as raises:
-            await self.run_test(key_dir, runtime_dir, False, FloatingPointError())
+            await self.run_test(key_dir, runtime_dir, False, FloatingPointError(), handle_host_key=True)
         if ferny.session.has_feature('KnownHostsCommand'):
             # on modern OSes we get a specific error message
             assert isinstance(raises.value, ferny.UnknownHostKeyError)
@@ -157,48 +164,76 @@ class TestBasic:
     @pytest.mark.asyncio
     async def test_raise_hostkey(self, key_dir: pathlib.Path, runtime_dir: pathlib.Path) -> None:
         with pytest.raises(ZeroDivisionError):
-            await self.run_test(key_dir, runtime_dir, ZeroDivisionError(), FloatingPointError())
+            await self.run_test(key_dir, runtime_dir, ZeroDivisionError(), FloatingPointError(), handle_host_key=True)
 
     @pytest.mark.asyncio
     async def test_raise_passphrase(self, key_dir: pathlib.Path, runtime_dir: pathlib.Path) -> None:
         with pytest.raises(FloatingPointError):
-            await self.run_test(key_dir, runtime_dir, True, FloatingPointError())
+            await self.run_test(key_dir, runtime_dir, True, FloatingPointError(), handle_host_key=True)
 
     @pytest.mark.asyncio
     async def test_wrong_passphrase(self, key_dir: pathlib.Path, runtime_dir: pathlib.Path) -> None:
         with pytest.raises(ferny.AuthenticationError) as raises:
-            await self.run_test(key_dir, runtime_dir, True, 'xx')
+            await self.run_test(key_dir, runtime_dir, True, 'xx', handle_host_key=True)
         assert 'Permission denied' in str(raises.value)
         assert 'publickey' in raises.value.methods
 
     @pytest.mark.asyncio
     async def test_correct_passphrase(self, key_dir: pathlib.Path, runtime_dir: pathlib.Path) -> None:
-        await self.run_test(key_dir, runtime_dir, True, 'passphrase')
+        await self.run_test(key_dir, runtime_dir, True, 'passphrase', handle_host_key=True)
 
     @pytest.mark.asyncio
     @pytest.mark.xfail
     async def test_known_host_good(self, key_dir: pathlib.Path, runtime_dir: pathlib.Path) -> None:
         await self.run_test(key_dir, runtime_dir, ZeroDivisionError(), 'passphrase',
-                            known_host_key='scan')
+                            handle_host_key=True, known_host_key='scan')
 
     @pytest.mark.asyncio
     async def test_known_host_changed(self, key_dir: pathlib.Path, runtime_dir: pathlib.Path) -> None:
         # reject new host key
         with pytest.raises(ferny.ChangedHostKeyError) as raises:
             await self.run_test(key_dir, runtime_dir, False, 'passphrase',
-                                known_host_key=NONMATCHING_HOSTKEY)
+                                handle_host_key=True, known_host_key=NONMATCHING_HOSTKEY)
         assert 'WARNING: REMOTE HOST IDENTIFICATION HAS CHANGED' in str(raises.value)
 
         # accept new host key
         if ferny.session.has_feature('KnownHostsCommand'):
             await self.run_test(key_dir, runtime_dir, True, 'passphrase',
-                                known_host_key=NONMATCHING_HOSTKEY)
+                                handle_host_key=True, known_host_key=NONMATCHING_HOSTKEY)
         else:
             # without KnownHostsCommand, we can't prompt
             with pytest.raises(ferny.ChangedHostKeyError) as raises:
                 await self.run_test(key_dir, runtime_dir, True, 'passphrase',
-                                    known_host_key=NONMATCHING_HOSTKEY)
+                                    handle_host_key=True, known_host_key=NONMATCHING_HOSTKEY)
             assert 'WARNING: REMOTE HOST IDENTIFICATION HAS CHANGED' in str(raises.value)
+
+    #
+    # without handling host keys
+    #
+
+    @pytest.mark.asyncio
+    async def test_no_host_key_unknown(self, key_dir: pathlib.Path, runtime_dir: pathlib.Path) -> None:
+        # note we only get a generic HostKeyError here, not Unknown*, as we don't enable KnownHostsCommand
+        with pytest.raises(ferny.HostKeyError) as raises:
+            await self.run_test(key_dir, runtime_dir, False, 'passphrase',
+                                handle_host_key=False)
+        assert str(raises.value) == 'Host key verification failed.'
+
+    @pytest.mark.asyncio
+    async def test_no_host_key_known(self, key_dir: pathlib.Path, runtime_dir: pathlib.Path) -> None:
+        await self.run_test(key_dir, runtime_dir, ZeroDivisionError(), 'passphrase',
+                            handle_host_key=False, known_host_key='scan')
+
+    @pytest.mark.asyncio
+    async def test_no_host_key_changed(self, key_dir: pathlib.Path, runtime_dir: pathlib.Path) -> None:
+        with pytest.raises(ferny.ChangedHostKeyError) as raises:
+            await self.run_test(key_dir, runtime_dir, ZeroDivisionError(), 'passphrase',
+                                handle_host_key=False, known_host_key=NONMATCHING_HOSTKEY)
+        assert 'WARNING: REMOTE HOST IDENTIFICATION HAS CHANGED' in str(raises.value)
+
+    #
+    # host key independent tests
+    #
 
     @pytest.mark.asyncio
     async def test_large_env(
