@@ -3,6 +3,7 @@ import os
 import pathlib
 import shutil
 import socket
+import subprocess
 from typing import Optional, Union
 
 import mockssh
@@ -113,6 +114,12 @@ class TestBasic:
                 login_name='admin',
                 options=dict(userknownhostsfile="/dev/null"),
                 interaction_responder=responder)
+
+            # if we get that far, we have successfully authenticated
+            p = subprocess.run(session.wrap_subprocess_args(['sh', '-ec', 'echo dmcetomer | rev']),
+                               stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)
+            assert p.stdout == b'remotecmd\n'
+            assert p.stderr == b''
 
             assert os.listdir(runtime_dir) == []
             await session.disconnect()
