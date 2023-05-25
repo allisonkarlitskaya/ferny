@@ -14,6 +14,13 @@ import ferny
 os.environ.pop('SSH_AUTH_SOCK', None)
 os.environ.pop('SSH_ASKPASS', None)
 
+# some host key which isn't the one from mock-ssh
+NONMATCHING_HOSTKEY = (
+    'ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDWdxkgPs4niiaW41P8NiKjI3slCoeaRQvvchTHCyvQMGOanv+iudgurkc' +
+    'VvJOWOHsbLdxSfW5KbF1bGpVu3nwjbA7rajDx8Xs4z6VLsd4WCrHJl0qZt5GFfYTriIiPfE1t/C9MIxA1Vfxz099DBQDgs9' +
+    '6kt7EidP2cBTb1rWGjBAt71jlfuxH4g1+emuPcuhdY3PFH5Ac7IwG5So3jxUWB7esDiO7StoKcAU2iJzp8yFLOrekYn8IA9' +
+    'cAxyzgYzlnqs8S/6aFrm/xTYAb1YIGyLUoyQgAIQW4MlILxq5opS3+YUYZaBLZRYoI2vkqqF+ULeqdZzgcOSLe4cbE3bZql')
+
 
 class MockResponder(ferny.InteractionResponder):
     passphrase: Union[Exception, str, None]
@@ -99,11 +106,21 @@ class TestBasic:
         key_dir: pathlib.Path,
         runtime_dir: pathlib.Path,
         accept_hostkey: Union[Exception, bool],
-        passphrase: Union[Exception, str]
+        passphrase: Union[Exception, str],
+        known_host_key: Optional[str] = None,
     ) -> None:
         responder = MockResponder(accept_hostkey, passphrase)
         users = {'admin': 'test/id_rsa'}
+        known_hosts = key_dir / 'known_hosts'
+
         with mockssh.Server(users) as server:
+            if known_host_key == 'scan':
+                known_host_key = subprocess.check_output(['ssh-keyscan', '-p', str(server.port), '127.0.0.1'],
+                                                         universal_newlines=True)
+                known_hosts.write_text(known_host_key)
+            elif known_host_key:
+                known_hosts.write_text(f'[127.0.0.1]:{server.port} {known_host_key}')
+
             session = ferny.Session()
             await session.connect(
                 server.host,
@@ -112,7 +129,7 @@ class TestBasic:
                 handle_host_key=True,
                 identity_file=os.path.join(key_dir, 'id_rsa.enc'),
                 login_name='admin',
-                options=dict(userknownhostsfile="/dev/null"),
+                options=dict(userknownhostsfile=str(known_hosts)),
                 interaction_responder=responder)
 
             # if we get that far, we have successfully authenticated
@@ -157,6 +174,31 @@ class TestBasic:
     @pytest.mark.asyncio
     async def test_correct_passphrase(self, key_dir: pathlib.Path, runtime_dir: pathlib.Path) -> None:
         await self.run_test(key_dir, runtime_dir, True, 'passphrase')
+
+    @pytest.mark.asyncio
+    @pytest.mark.xfail
+    async def test_known_host_good(self, key_dir: pathlib.Path, runtime_dir: pathlib.Path) -> None:
+        await self.run_test(key_dir, runtime_dir, ZeroDivisionError(), 'passphrase',
+                            known_host_key='scan')
+
+    @pytest.mark.asyncio
+    async def test_known_host_changed(self, key_dir: pathlib.Path, runtime_dir: pathlib.Path) -> None:
+        # reject new host key
+        with pytest.raises(ferny.ChangedHostKeyError) as raises:
+            await self.run_test(key_dir, runtime_dir, False, 'passphrase',
+                                known_host_key=NONMATCHING_HOSTKEY)
+        assert 'WARNING: REMOTE HOST IDENTIFICATION HAS CHANGED' in str(raises.value)
+
+        # accept new host key
+        if ferny.session.has_feature('KnownHostsCommand'):
+            await self.run_test(key_dir, runtime_dir, True, 'passphrase',
+                                known_host_key=NONMATCHING_HOSTKEY)
+        else:
+            # without KnownHostsCommand, we can't prompt
+            with pytest.raises(ferny.ChangedHostKeyError) as raises:
+                await self.run_test(key_dir, runtime_dir, True, 'passphrase',
+                                    known_host_key=NONMATCHING_HOSTKEY)
+            assert 'WARNING: REMOTE HOST IDENTIFICATION HAS CHANGED' in str(raises.value)
 
     @pytest.mark.asyncio
     async def test_large_env(
