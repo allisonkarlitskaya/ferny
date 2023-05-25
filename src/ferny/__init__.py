@@ -1,4 +1,4 @@
-from .errors import AuthenticationError, HostKeyError, SshError
+from .errors import AuthenticationError, ChangedHostKeyError, HostKeyError, SshError, UnknownHostKeyError
 from .interaction_agent import (
     COMMAND_TEMPLATE,
     InteractionAgent,
@@ -17,6 +17,8 @@ __all__ = [
     'Session',
     'AuthenticationError',
     'HostKeyError',
+    'ChangedHostKeyError',
+    'UnknownHostKeyError',
     'SshError',
     'temporary_askpass',
     'write_askpass_to_tmpdir'
