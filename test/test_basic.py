@@ -213,9 +213,10 @@ class TestBasic:
         assert 'keys/id_rsa.enc' in prompt
 
     @pytest.mark.asyncio
-    @pytest.mark.xfail
     async def test_known_host_good(self, key_dir: pathlib.Path, runtime_dir: pathlib.Path) -> None:
-        await self.run_test(key_dir, runtime_dir, ZeroDivisionError(), 'passphrase',
+        # this calls do_hostkey() for the already known key, just in case it wants to supply additional keys
+        # don't do this and don't accept any, just rely on the existing one
+        await self.run_test(key_dir, runtime_dir, False, 'passphrase',
                             handle_host_key=True, known_host_key='scan')
 
     @pytest.mark.asyncio
