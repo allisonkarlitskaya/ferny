@@ -4,7 +4,7 @@ import pathlib
 import shutil
 import socket
 import subprocess
-from typing import Optional, Union
+from typing import List, Optional, Tuple, Union
 
 import mockssh
 import pytest
@@ -25,6 +25,15 @@ NONMATCHING_HOSTKEY = (
 class MockResponder(ferny.InteractionResponder):
     passphrase: Union[Exception, str, None]
     accept_hostkey: Union[Exception, bool]
+    askpass_args: List[Tuple[str, str, str]]
+    hostkey_args: List[Tuple[str, str, str, str, str]]
+
+    def __init__(self, accept_hostkey: Union[Exception, bool], passphrase: Union[Exception, str, None]) -> None:
+        self.accept_hostkey = accept_hostkey
+        self.passphrase = passphrase
+        # reset the mock state on each iteration
+        MockResponder.askpass_args = []
+        MockResponder.hostkey_args = []
 
     async def do_askpass(self, messages: str, prompt: str, hint: str) -> Optional[str]:
         # this happens on RHEL 8 which doesn't have KnownHostKey support; and everywhere with
@@ -32,19 +41,16 @@ class MockResponder(ferny.InteractionResponder):
         if 'fingerprint' in prompt:
             return 'yes' if await self.do_hostkey('', '', '', '', '') else 'no'
         assert 'passphrase' in prompt
+        self.askpass_args.append((messages, prompt, hint))
         if isinstance(self.passphrase, Exception):
             raise self.passphrase
         return self.passphrase
 
     async def do_hostkey(self, reason: str, host: str, algorithm: str, key: str, fingerprint: str) -> bool:
-        print('host key', host, algorithm, key, fingerprint)
+        self.hostkey_args.append((reason, host, algorithm, key, fingerprint))
         if isinstance(self.accept_hostkey, Exception):
             raise self.accept_hostkey
         return self.accept_hostkey
-
-    def __init__(self, accept_hostkey: Union[Exception, bool], passphrase: Union[Exception, str, None]) -> None:
-        self.accept_hostkey = accept_hostkey
-        self.passphrase = passphrase
 
 
 @pytest.fixture
@@ -152,14 +158,28 @@ class TestBasic:
     async def test_reject_hostkey(self, key_dir: pathlib.Path, runtime_dir: pathlib.Path) -> None:
         with pytest.raises(ferny.HostKeyError) as raises:
             await self.run_test(key_dir, runtime_dir, False, FloatingPointError(), handle_host_key=True)
+
+        # got one host key request with a sensible RSA key
+        assert MockResponder.askpass_args == []
+        assert len(MockResponder.hostkey_args) == 1
+        reason, host, algorithm, key, fingerprint = MockResponder.hostkey_args[0]
+
         if ferny.session.has_feature('KnownHostsCommand'):
             # on modern OSes we get a specific error message
             assert isinstance(raises.value, ferny.UnknownHostKeyError)
             assert 'No RSA host key is known for [127.0.0.1]:' in str(raises.value)
             assert 'Host key verification failed.' in str(raises.value)
+            assert reason == 'HOSTNAME'
+            assert host.startswith('[127.0.0.1]:')  # plus random port
+            assert algorithm == 'ssh-rsa'
+            assert key.startswith('AAAA')
+            assert fingerprint.startswith('SHA256:')  # depends on mock-ssh implementation
         else:
             # on old OSes we only get a generic error
             assert str(raises.value) == 'Host key verification failed.'
+            # ... and dummy values from MockResponder
+            assert reason == ''
+            assert key == ''
 
     @pytest.mark.asyncio
     async def test_raise_hostkey(self, key_dir: pathlib.Path, runtime_dir: pathlib.Path) -> None:
@@ -177,10 +197,20 @@ class TestBasic:
             await self.run_test(key_dir, runtime_dir, True, 'xx', handle_host_key=True)
         assert 'Permission denied' in str(raises.value)
         assert 'publickey' in raises.value.methods
+        assert len(MockResponder.hostkey_args) == 1
+        assert len(MockResponder.askpass_args) == 3  # default NumberOfPasswordPrompts
+        _messages, prompt, hint = MockResponder.askpass_args[0]
+        assert 'Enter passphrase for key' in prompt
+        assert 'keys/id_rsa.enc' in prompt
 
     @pytest.mark.asyncio
     async def test_correct_passphrase(self, key_dir: pathlib.Path, runtime_dir: pathlib.Path) -> None:
         await self.run_test(key_dir, runtime_dir, True, 'passphrase', handle_host_key=True)
+        assert len(MockResponder.hostkey_args) == 1
+        assert len(MockResponder.askpass_args) == 1
+        _messages, prompt, hint = MockResponder.askpass_args[0]
+        assert 'Enter passphrase for key' in prompt
+        assert 'keys/id_rsa.enc' in prompt
 
     @pytest.mark.asyncio
     @pytest.mark.xfail
@@ -218,11 +248,15 @@ class TestBasic:
             await self.run_test(key_dir, runtime_dir, False, 'passphrase',
                                 handle_host_key=False)
         assert str(raises.value) == 'Host key verification failed.'
+        assert len(MockResponder.hostkey_args) == 1
+        assert len(MockResponder.askpass_args) == 0
 
     @pytest.mark.asyncio
     async def test_no_host_key_known(self, key_dir: pathlib.Path, runtime_dir: pathlib.Path) -> None:
         await self.run_test(key_dir, runtime_dir, ZeroDivisionError(), 'passphrase',
                             handle_host_key=False, known_host_key='scan')
+        assert len(MockResponder.hostkey_args) == 0
+        assert len(MockResponder.askpass_args) == 1
 
     @pytest.mark.asyncio
     async def test_no_host_key_changed(self, key_dir: pathlib.Path, runtime_dir: pathlib.Path) -> None:
@@ -230,6 +264,9 @@ class TestBasic:
             await self.run_test(key_dir, runtime_dir, ZeroDivisionError(), 'passphrase',
                                 handle_host_key=False, known_host_key=NONMATCHING_HOSTKEY)
         assert 'WARNING: REMOTE HOST IDENTIFICATION HAS CHANGED' in str(raises.value)
+        # FIXME: we don't currently prompt in this case, although we eventually should
+        assert len(MockResponder.hostkey_args) == 0
+        assert len(MockResponder.askpass_args) == 0
 
     #
     # host key independent tests
