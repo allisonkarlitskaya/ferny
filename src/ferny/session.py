@@ -139,8 +139,6 @@ class Session(SubprocessContext, InteractionResponder):
         if handle_host_key and has_feature('KnownHostsCommand'):
             args.extend([
                 '-o', f'KnownHostsCommand={askpass_path} %I %H %t %K %f',
-                '-o', 'GlobalKnownHostsFile=none',
-                '-o', 'UserKnownHostsFile=none',
                 '-o', 'StrictHostKeyChecking=yes',
             ])
 
