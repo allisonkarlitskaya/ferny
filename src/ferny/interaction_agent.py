@@ -34,6 +34,19 @@ logger = logging.getLogger(__name__)
 COMMAND_RE = re.compile(b'\0ferny\0([^\n]*)\0\0\n')
 COMMAND_TEMPLATE = '\0ferny\0{(command, args)!r}\0\0\n'
 
+BEIBOOT_GADGETS = {
+    "command": fr"""
+        import sys
+        def command(command, *args):
+            sys.stderr.write(f{COMMAND_TEMPLATE!r})
+            sys.stderr.flush()
+    """,
+    "end": r"""
+        def end():
+            command('ferny.end')
+    """,
+}
+
 
 class InteractionError(Exception):
     pass
