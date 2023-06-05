@@ -1,5 +1,6 @@
 from .errors import AuthenticationError, ChangedHostKeyError, HostKeyError, SshError, UnknownHostKeyError
 from .interaction_agent import (
+    BEIBOOT_GADGETS,
     COMMAND_TEMPLATE,
     InteractionAgent,
     InteractionError,
@@ -10,6 +11,7 @@ from .interaction_agent import (
 from .session import Session
 
 __all__ = [
+    'BEIBOOT_GADGETS',
     'COMMAND_TEMPLATE',
     'InteractionAgent',
     'InteractionError',
