@@ -24,7 +24,7 @@ import os
 import re
 import socket
 import tempfile
-from typing import Any, Dict, Generator, List, Optional, TextIO, Tuple
+from typing import Any, ClassVar, Dict, Generator, List, Optional, Sequence, TextIO, Tuple
 
 from . import interaction_client
 
@@ -92,7 +92,16 @@ async def wait_readable(fd: int) -> None:
         loop.remove_reader(fd)
 
 
-class InteractionResponder:
+class InteractionHandler:
+    commands: ClassVar[Sequence[str]]
+
+    async def run_command(self, command: str, args: Tuple, fds: List[int], stderr: str) -> None:
+        raise NotImplementedError
+
+
+class InteractionResponder(InteractionHandler):
+    commands: ClassVar[Sequence[str]] = ('ferny.askpass',)
+
     async def do_askpass(self, messages: str, prompt: str, hint: str) -> Optional[str]:
         """Prompt the user for an authentication or confirmation interaction.
 
@@ -213,17 +222,24 @@ class InteractionResponder:
 
 
 class InteractionAgent:
-    responder: InteractionResponder
+    handlers: Dict[str, InteractionHandler]
     ours: socket.socket
     theirs: socket.socket
     buffer: bytes
     connected: bool
 
-    def __init__(self, responder: InteractionResponder) -> None:
+    def __init__(self, handler: Optional[InteractionHandler] = None) -> None:
         self.buffer = b''
         self.ours, self.theirs = socket.socketpair()
         self.connected = False
-        self.responder = responder
+        self.handlers = {}
+
+        if handler is not None:
+            self.add_handler(handler)
+
+    def add_handler(self, handler: InteractionHandler) -> None:
+        for command in handler.commands:
+            self.handlers[command] = handler
 
     def fileno(self) -> int:
         return self.theirs.fileno()
@@ -243,7 +259,13 @@ class InteractionAgent:
             self.connected = True
             return
 
-        await self.responder.run_command(command, args, fds, stderr.decode('utf-8'))
+        try:
+            handler = self.handlers[command]
+        except KeyError:
+            logger.error('Received unhandled ferny command: %s', command)
+            return
+
+        await handler.run_command(command, args, fds, stderr.decode('utf-8'))
 
     async def communicate(self) -> None:
         self.theirs.close()
