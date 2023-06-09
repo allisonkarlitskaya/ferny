@@ -155,6 +155,8 @@ async def test_cancel_before_interaction(event_loop: asyncio.AbstractEventLoop) 
 
 
 class RaiseResponder(ferny.InteractionResponder):
+    commands = ('ferny.askpass', 'bzzt')
+
     async def do_askpass(self, messages: str, prompt: str, hint: str) -> None:
         raise ValueError(messages, prompt, hint)
 
