@@ -27,7 +27,7 @@ import tempfile
 from typing import Mapping, Optional, Sequence
 
 from . import errors
-from .interaction_agent import InteractionAgent, InteractionError, InteractionResponder, write_askpass_to_tmpdir
+from .interaction_agent import InteractionAgent, InteractionError, InteractionHandler, write_askpass_to_tmpdir
 
 prctl = ctypes.cdll.LoadLibrary('libc.so.6').prctl
 logger = logging.getLogger(__name__)
@@ -75,7 +75,7 @@ class SubprocessContext:
         return env
 
 
-class Session(SubprocessContext, InteractionResponder):
+class Session(SubprocessContext, InteractionHandler):
     # Set after .connect() called, even if failed
     _controldir: Optional[tempfile.TemporaryDirectory] = None
     _controlsock: Optional[str] = None
@@ -92,7 +92,7 @@ class Session(SubprocessContext, InteractionResponder):
                       options: Optional[Mapping[str, str]] = None,
                       pkcs11: Optional[str] = None,
                       port: Optional[int] = None,
-                      interaction_responder: Optional[InteractionResponder] = None) -> None:
+                      interaction_responder: Optional[InteractionHandler] = None) -> None:
         os.makedirs(FERNY_DIR, exist_ok=True)
         self._controldir = tempfile.TemporaryDirectory(dir=FERNY_DIR)
         self._controlsock = f'{self._controldir.name}/socket'
@@ -142,7 +142,7 @@ class Session(SubprocessContext, InteractionResponder):
                 '-o', 'StrictHostKeyChecking=yes',
             ])
 
-        agent = InteractionAgent(interaction_responder or self)
+        agent = InteractionAgent(interaction_responder)
 
         # SSH_ASKPASS_REQUIRE is not generally available, so use setsid
         process = await asyncio.create_subprocess_exec(
@@ -161,7 +161,7 @@ class Session(SubprocessContext, InteractionResponder):
             await process.wait()
             raise errors.get_exception_for_ssh_stderr(str(exc)) from None
         except BaseException:
-            # If we get here because the InteractionResponder raised an
+            # If we get here because the InteractionHandler raised an
             # exception then SSH might still be running, and may even attempt
             # further interactions (ie: 2nd attempt for password).  We already
             # have our exception and don't need any more info.  Kill it.

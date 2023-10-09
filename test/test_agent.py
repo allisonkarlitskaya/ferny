@@ -8,7 +8,7 @@ import pytest
 import ferny
 
 
-class SpeakSlow(ferny.InteractionResponder):
+class SpeakSlow(ferny.SshAskpassResponder):
     running = False
 
     async def do_askpass(self, messages: str, prompt: str, hint: str) -> None:
@@ -154,7 +154,7 @@ async def test_cancel_before_interaction(event_loop: asyncio.AbstractEventLoop) 
     await process.wait()
 
 
-class RaiseResponder(ferny.InteractionResponder):
+class RaiseResponder(ferny.AskpassHandler):
     commands = ('ferny.askpass', 'bzzt')
 
     async def do_askpass(self, messages: str, prompt: str, hint: str) -> None:

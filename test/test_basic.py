@@ -22,7 +22,7 @@ NONMATCHING_HOSTKEY = (
     'cAxyzgYzlnqs8S/6aFrm/xTYAb1YIGyLUoyQgAIQW4MlILxq5opS3+YUYZaBLZRYoI2vkqqF+ULeqdZzgcOSLe4cbE3bZql')
 
 
-class MockResponder(ferny.InteractionResponder):
+class MockResponder(ferny.SshAskpassResponder):
     passphrase: Union[Exception, str, None]
     accept_hostkey: Union[Exception, bool]
     askpass_args: List[Tuple[str, str, str]]
