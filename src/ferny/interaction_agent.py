@@ -99,7 +99,7 @@ class InteractionHandler:
         raise NotImplementedError
 
 
-class InteractionResponder(InteractionHandler):
+class AskpassHandler(InteractionHandler):
     commands: ClassVar[Sequence[str]] = ('ferny.askpass',)
 
     async def do_askpass(self, messages: str, prompt: str, hint: str) -> Optional[str]:

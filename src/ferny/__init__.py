@@ -2,28 +2,31 @@ from .errors import AuthenticationError, ChangedHostKeyError, HostKeyError, SshE
 from .interaction_agent import (
     BEIBOOT_GADGETS,
     COMMAND_TEMPLATE,
+    AskpassHandler,
     InteractionAgent,
     InteractionError,
     InteractionHandler,
-    InteractionResponder,
     temporary_askpass,
     write_askpass_to_tmpdir,
 )
 from .session import Session
+from .ssh_askpass import AskpassPrompt, SshAskpassResponder
 
 __all__ = [
+    'AskpassPrompt',
+    'AskpassHandler',
+    'AuthenticationError',
     'BEIBOOT_GADGETS',
     'COMMAND_TEMPLATE',
+    'ChangedHostKeyError',
+    'HostKeyError',
     'InteractionAgent',
     'InteractionError',
     'InteractionHandler',
-    'InteractionResponder',
     'Session',
-    'AuthenticationError',
-    'HostKeyError',
-    'ChangedHostKeyError',
-    'UnknownHostKeyError',
+    'SshAskpassResponder',
     'SshError',
+    'UnknownHostKeyError',
     'temporary_askpass',
-    'write_askpass_to_tmpdir'
+    'write_askpass_to_tmpdir',
 ]

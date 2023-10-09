@@ -8,7 +8,7 @@ from prompt_toolkit import PromptSession
 import ferny
 
 
-class PromptResponder(PromptSession, ferny.InteractionResponder):
+class PromptResponder(PromptSession, ferny.SshAskpassResponder):
     async def do_hostkey(self, reason: str, host: str, algorithm: str, key: str, fingerprint: str) -> bool:
         print(f'Host key {host} {fingerprint}')
         response = await self.prompt_async('Accept [yes/no/abort]? ')
