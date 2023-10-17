@@ -26,13 +26,17 @@ from .ssh_errors import (
     SshHostKeyError,
     SshUnknownHostKeyError,
 )
+from .transport import FernyTransport, SubprocessError
 
 __all__ = [
     'AskpassHandler',
     'AskpassPrompt',
+    'AuthenticationError',
     'BEIBOOT_GADGETS',
     'COMMAND_TEMPLATE',
+    'ChangedHostKeyError',
     'FernyTransport',
+    'HostKeyError',
     'InteractionAgent',
     'InteractionError',
     'InteractionHandler',
@@ -49,6 +53,7 @@ __all__ = [
     'SshPassphrasePrompt',
     'SshPasswordPrompt',
     'SshUnknownHostKeyError',
+    'SubprocessError',
     'temporary_askpass',
     'write_askpass_to_tmpdir',
 ]
