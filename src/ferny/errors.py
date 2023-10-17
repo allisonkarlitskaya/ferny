@@ -20,13 +20,13 @@ import errno
 import os
 import re
 import socket
-from typing import ClassVar, Iterable, Match, Optional, Pattern, Tuple
+from typing import ClassVar, Iterable, Match, Pattern
 
 
 class SshError(Exception):
     PATTERN: ClassVar[Pattern]
 
-    def __init__(self, match: Optional[Match], stderr: str) -> None:
+    def __init__(self, match: 'Match | None', stderr: str) -> None:
         super().__init__(match.group(0) if match is not None else stderr)
         self.stderr = stderr
 
@@ -57,7 +57,7 @@ class ChangedHostKeyError(HostKeyError):
 
 # Functionality for mapping getaddrinfo()-family error messages to their
 # equivalent Python exceptions.
-def make_gaierror_map() -> Iterable[Tuple[str, int]]:
+def make_gaierror_map() -> 'Iterable[tuple[str, int]]':
     libc = ctypes.CDLL(None)
     libc.gai_strerror.restype = ctypes.c_char_p
 

@@ -43,6 +43,7 @@ select = [
     "F",
     "G",
     "I",
+    "TID",
 ]
 ignore = [
     "A003",      # Class attribute is shadowing a python builtin
@@ -54,6 +55,14 @@ line-length = 118
 
 [tool.ruff.flake8-annotations]
 allow-star-arg-any = true
+
+[tool.ruff.flake8-tidy-imports.banned-api]
+"typing.Dict".msg = "use 'dict[]' in quotes"
+"typing.List".msg = "use 'list[]' in quotes"
+"typing.Optional".msg = "use '| None' in quotes"
+"typing.Set".msg = "use 'set[]' in quotes"
+"typing.Type".msg = "use 'type[]' in quotes"
+"typing.Union".msg = "use '|' in quotes"
 
 [tool.coverage.paths]
 source = ["src", "*/site-packages"]

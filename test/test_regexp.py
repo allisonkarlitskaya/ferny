@@ -19,7 +19,6 @@ import os
 import subprocess
 import sys
 import textwrap
-from typing import Optional
 
 import pytest
 
@@ -191,7 +190,7 @@ def test_categorize_errors(msg_id: str) -> None:
 
 
 class MockResponder(ferny.SshAskpassResponder):
-    async def do_prompt(self, prompt: ferny.AskpassPrompt) -> Optional[str]:
+    async def do_prompt(self, prompt: ferny.AskpassPrompt) -> 'str | None':
         # respond with the type of the prompt
         assert prompt.stderr == ''
         return prompt.__class__.__name__

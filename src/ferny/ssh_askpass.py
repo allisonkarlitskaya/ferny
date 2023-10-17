@@ -1,6 +1,6 @@
 import logging
 import re
-from typing import ClassVar, Match, Optional, Sequence
+from typing import ClassVar, Match, Sequence
 
 from .interaction_agent import AskpassHandler
 
@@ -39,7 +39,7 @@ class AskpassPrompt:
         finally:
             self.close()
 
-    async def dispatch(self, responder: 'SshAskpassResponder') -> Optional[str]:
+    async def dispatch(self, responder: 'SshAskpassResponder') -> 'str | None':
         return await responder.do_prompt(self)
 
 
@@ -48,7 +48,7 @@ class SSHAskpassPrompt(AskpassPrompt):
     # answer is permitted.  If it's a sequence then only answers from the
     # sequence are permitted.  If it's an empty sequence, then no answer is
     # permitted (ie: the askpass callback should never return).
-    answers: ClassVar[Optional[Sequence[str]]] = None
+    answers: 'ClassVar[Sequence[str] | None]' = None
 
     # Patterns to capture.  `_pattern` *must* match.
     _pattern: ClassVar[str]
@@ -79,10 +79,10 @@ HELPERS = {
 
 class PasswordPrompt(SSHAskpassPrompt):
     _pattern = r"%{username}@%{hostname}'s password: "
-    username: Optional[str] = None
-    hostname: Optional[str] = None
+    username: 'str | None' = None
+    hostname: 'str | None' = None
 
-    async def dispatch(self, responder: 'SshAskpassResponder') -> Optional[str]:
+    async def dispatch(self, responder: 'SshAskpassResponder') -> 'str | None':
         return await responder.do_password_prompt(self)
 
 
@@ -90,7 +90,7 @@ class PassphrasePrompt(SSHAskpassPrompt):
     _pattern = r"Enter passphrase for key '%{filename}': "
     filename: str
 
-    async def dispatch(self, responder: 'SshAskpassResponder') -> Optional[str]:
+    async def dispatch(self, responder: 'SshAskpassResponder') -> 'str | None':
         return await responder.do_passphrase_prompt(self)
 
 
@@ -99,7 +99,7 @@ class FIDOPINPrompt(SSHAskpassPrompt):
     algorithm: str
     filename: str
 
-    async def dispatch(self, responder: 'SshAskpassResponder') -> Optional[str]:
+    async def dispatch(self, responder: 'SshAskpassResponder') -> 'str  | None':
         return await responder.do_fido_pin_prompt(self)
 
 
@@ -109,7 +109,7 @@ class FIDOUserPresencePrompt(SSHAskpassPrompt):
     algorithm: str
     fingerprint: str
 
-    async def dispatch(self, responder: 'SshAskpassResponder') -> Optional[str]:
+    async def dispatch(self, responder: 'SshAskpassResponder') -> 'str | None':
         return await responder.do_fido_user_presence_prompt(self)
 
 
@@ -117,7 +117,7 @@ class PKCS11PINPrompt(SSHAskpassPrompt):
     _pattern = r"Enter PIN for '%{pkcs11_id}': "
     pkcs11_id: str
 
-    async def dispatch(self, responder: 'SshAskpassResponder') -> Optional[str]:
+    async def dispatch(self, responder: 'SshAskpassResponder') -> 'str | None':
         return await responder.do_pkcs11_pin_prompt(self)
 
 
@@ -132,7 +132,7 @@ class HostKeyPrompt(SSHAskpassPrompt):
     algorithm: str
     fingerprint: str
 
-    async def dispatch(self, responder: 'SshAskpassResponder') -> Optional[str]:
+    async def dispatch(self, responder: 'SshAskpassResponder') -> 'str | None':
         return await responder.do_host_key_prompt(self)
 
 
@@ -174,27 +174,27 @@ def categorize_ssh_prompt(string: str, stderr: str) -> AskpassPrompt:
 
 
 class SshAskpassResponder(AskpassHandler):
-    async def do_askpass(self, stderr: str, prompt: str, hint: str) -> Optional[str]:
+    async def do_askpass(self, stderr: str, prompt: str, hint: str) -> 'str | None':
         return await categorize_ssh_prompt(prompt, stderr).dispatch(self)
 
-    async def do_prompt(self, prompt: AskpassPrompt) -> Optional[str]:
+    async def do_prompt(self, prompt: AskpassPrompt) -> 'str | None':
         # Default fallback for unrecognised message types: unimplemented
         return None
 
-    async def do_fido_pin_prompt(self, prompt: FIDOPINPrompt) -> Optional[str]:
+    async def do_fido_pin_prompt(self, prompt: FIDOPINPrompt) -> 'str | None':
         return await self.do_prompt(prompt)
 
-    async def do_fido_user_presence_prompt(self, prompt: FIDOUserPresencePrompt) -> Optional[str]:
+    async def do_fido_user_presence_prompt(self, prompt: FIDOUserPresencePrompt) -> 'str | None':
         return await self.do_prompt(prompt)
 
-    async def do_host_key_prompt(self, prompt: HostKeyPrompt) -> Optional[str]:
+    async def do_host_key_prompt(self, prompt: HostKeyPrompt) -> 'str | None':
         return await self.do_prompt(prompt)
 
-    async def do_pkcs11_pin_prompt(self, prompt: PKCS11PINPrompt) -> Optional[str]:
+    async def do_pkcs11_pin_prompt(self, prompt: PKCS11PINPrompt) -> 'str | None':
         return await self.do_prompt(prompt)
 
-    async def do_passphrase_prompt(self, prompt: PassphrasePrompt) -> Optional[str]:
+    async def do_passphrase_prompt(self, prompt: PassphrasePrompt) -> 'str | None':
         return await self.do_prompt(prompt)
 
-    async def do_password_prompt(self, prompt: PasswordPrompt) -> Optional[str]:
+    async def do_password_prompt(self, prompt: PasswordPrompt) -> 'str | None':
         return await self.do_prompt(prompt)
