@@ -90,7 +90,8 @@ def test_feature_detection() -> None:
 
 
 @pytest.mark.asyncio
-async def test_connection_refused() -> None:
+async def test_connection_refused(runtime_dir: pathlib.Path) -> None:
+    del runtime_dir
     session = ferny.Session()
     with pytest.raises(ConnectionRefusedError):
         # hopefully nobody listens on 1...
@@ -98,7 +99,7 @@ async def test_connection_refused() -> None:
 
 
 @pytest.mark.asyncio
-async def test_dns_error() -> None:
+async def test_dns_error(runtime_dir: pathlib.Path) -> None:
     session = ferny.Session()
     with pytest.raises(socket.gaierror):
         await session.connect('¡invalid hostname!')
@@ -147,7 +148,7 @@ class TestBasic:
             assert p.stdout == b'remotecmd\n'
             assert p.stderr == b''
 
-            assert os.listdir(runtime_dir) == []
+            assert os.listdir(runtime_dir) == ['ferny']
             await session.disconnect()
 
     #

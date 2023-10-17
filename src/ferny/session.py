@@ -31,8 +31,6 @@ from .interaction_agent import InteractionAgent, InteractionError, InteractionHa
 
 prctl = ctypes.cdll.LoadLibrary('libc.so.6').prctl
 logger = logging.getLogger(__name__)
-RUN = os.environ.get('XDG_RUNTIME_DIR', '/run')
-FERNY_DIR = os.path.join(RUN, 'ferny')
 PR_SET_PDEATHSIG = 1
 
 
@@ -93,8 +91,9 @@ class Session(SubprocessContext, InteractionHandler):
                       pkcs11: Optional[str] = None,
                       port: Optional[int] = None,
                       interaction_responder: Optional[InteractionHandler] = None) -> None:
-        os.makedirs(FERNY_DIR, exist_ok=True)
-        self._controldir = tempfile.TemporaryDirectory(dir=FERNY_DIR)
+        rundir = os.path.join(os.environ.get('XDG_RUNTIME_DIR', '/run'), 'ferny')
+        os.makedirs(rundir, exist_ok=True)
+        self._controldir = tempfile.TemporaryDirectory(dir=rundir)
         self._controlsock = f'{self._controldir.name}/socket'
 
         # In general, we can't guarantee an accessible and executable version
