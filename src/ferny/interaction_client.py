@@ -5,7 +5,7 @@ import io
 import os
 import socket
 import sys
-from typing import Dict, List, Sequence
+from typing import Sequence
 
 
 def command(stderr_fd: int, command: str, *args: object, fds: Sequence[int] = ()) -> None:
@@ -20,7 +20,7 @@ def command(stderr_fd: int, command: str, *args: object, fds: Sequence[int] = ()
         cmd_write.write(repr((command, args)))
 
 
-def askpass(stderr_fd: int, stdout_fd: int, args: List[str], env: Dict[str, str]) -> int:
+def askpass(stderr_fd: int, stdout_fd: int, args: 'list[str]', env: 'dict[str, str]') -> int:
     ours, theirs = socket.socketpair()
 
     with theirs:

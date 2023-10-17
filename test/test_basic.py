@@ -4,7 +4,6 @@ import pathlib
 import shutil
 import socket
 import subprocess
-from typing import List, Optional, Tuple, Union
 
 import mockssh
 import pytest
@@ -23,19 +22,19 @@ NONMATCHING_HOSTKEY = (
 
 
 class MockResponder(ferny.SshAskpassResponder):
-    passphrase: Union[Exception, str, None]
-    accept_hostkey: Union[Exception, bool]
-    askpass_args: List[Tuple[str, str, str]]
-    hostkey_args: List[Tuple[str, str, str, str, str]]
+    passphrase: 'Exception | str | None'
+    accept_hostkey: 'Exception | bool'
+    askpass_args: 'list[tuple[str, str, str]]'
+    hostkey_args: 'list[tuple[str, str, str, str, str]]'
 
-    def __init__(self, accept_hostkey: Union[Exception, bool], passphrase: Union[Exception, str, None]) -> None:
+    def __init__(self, accept_hostkey: 'Exception | bool', passphrase: 'Exception | str | None') -> None:
         self.accept_hostkey = accept_hostkey
         self.passphrase = passphrase
         # reset the mock state on each iteration
         MockResponder.askpass_args = []
         MockResponder.hostkey_args = []
 
-    async def do_askpass(self, messages: str, prompt: str, hint: str) -> Optional[str]:
+    async def do_askpass(self, messages: str, prompt: str, hint: str) -> 'str | None':
         # this happens on RHEL 8 which doesn't have KnownHostKey support; and everywhere with
         # handle_host_key=False, then this callback receives *every* agent interaction
         if 'fingerprint' in prompt:
@@ -114,9 +113,9 @@ class TestBasic:
     async def run_test(
         key_dir: pathlib.Path,
         runtime_dir: pathlib.Path,
-        accept_hostkey: Union[Exception, bool],
-        passphrase: Union[Exception, str],
-        known_host_key: Optional[str] = None,
+        accept_hostkey: 'Exception | bool',
+        passphrase: 'Exception | str',
+        known_host_key: 'str | None' = None,
         handle_host_key: bool = False,
     ) -> None:
         responder = MockResponder(accept_hostkey, passphrase)

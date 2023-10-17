@@ -24,7 +24,7 @@ import os
 import re
 import socket
 import tempfile
-from typing import Any, ClassVar, Dict, Generator, List, Optional, Sequence, TextIO, Tuple
+from typing import Any, ClassVar, Generator, Sequence, TextIO
 
 from . import interaction_client
 
@@ -59,7 +59,7 @@ except AttributeError:
 
     def recv_fds(
         sock: socket.socket, bufsize: int, maxfds: int, flags: int = 0
-    ) -> Tuple[bytes, List[int], int, None]:
+    ) -> 'tuple[bytes, list[int], int, None]':
         fds = array.array("i")
         msg, ancdata, flags, addr = sock.recvmsg(bufsize, socket.CMSG_LEN(maxfds * fds.itemsize))
         for cmsg_level, cmsg_type, cmsg_data in ancdata:
@@ -95,14 +95,14 @@ async def wait_readable(fd: int) -> None:
 class InteractionHandler:
     commands: ClassVar[Sequence[str]]
 
-    async def run_command(self, command: str, args: Tuple, fds: List[int], stderr: str) -> None:
+    async def run_command(self, command: str, args: 'tuple[object, ...]', fds: 'list[int]', stderr: str) -> None:
         raise NotImplementedError
 
 
 class AskpassHandler(InteractionHandler):
     commands: ClassVar[Sequence[str]] = ('ferny.askpass',)
 
-    async def do_askpass(self, messages: str, prompt: str, hint: str) -> Optional[str]:
+    async def do_askpass(self, messages: str, prompt: str, hint: str) -> 'str | None':
         """Prompt the user for an authentication or confirmation interaction.
 
         'messages' is data that was sent to stderr before the interaction was requested.
@@ -140,7 +140,9 @@ class AskpassHandler(InteractionHandler):
         """
         return False
 
-    async def do_custom_command(self, command: str, args: Tuple, fds: List[int], stderr: str) -> None:
+    async def do_custom_command(
+        self, command: str, args: 'tuple[object, ...]', fds: 'list[int]', stderr: str
+    ) -> None:
         """Handle a custom command.
 
         The command name, its arguments, the passed fds, and the stderr leading
@@ -149,7 +151,7 @@ class AskpassHandler(InteractionHandler):
         See doc/interaction-protocol.md
         """
 
-    async def _askpass_task(self, args: List[str], env: Dict[str, str],
+    async def _askpass_task(self, args: 'list[str]', env: 'dict[str, str]',
                             status: TextIO, stdout: TextIO, stderr: str) -> None:
         logger.debug('_askpass_task(%s, %d, %s, %s, %s)', args, len(env), status, stdout, stderr)
 
@@ -171,7 +173,7 @@ class AskpassHandler(InteractionHandler):
         else:
             logger.error('Incorrect number of command-line arguments to ferny-askpass: %s', args)
 
-    async def _askpass_command(self, args: Tuple, fds: List[int], stderr: str) -> None:
+    async def _askpass_command(self, args: 'tuple[object, ...]', fds: 'list[int]', stderr: str) -> None:
         logger.debug('_askpass_command(%s, %s, %s)', args, fds, stderr)
         try:
             argv, env = args
@@ -191,7 +193,7 @@ class AskpassHandler(InteractionHandler):
             # We want to wait until either of these things happen:
             #   - our handler function finishes running
             #   - status fd closes from the other side (ie: askpass was killed)
-            def _done(task: Optional[asyncio.Task] = None) -> None:
+            def _done(task: 'asyncio.Task | None' = None) -> None:
                 if not future.done():
                     future.set_result(None)
 
@@ -213,7 +215,7 @@ class AskpassHandler(InteractionHandler):
                         task.cancel()
                     await task
 
-    async def run_command(self, command: str, args: Tuple, fds: List[int], stderr: str) -> None:
+    async def run_command(self, command: str, args: 'tuple[object, ...]', fds: 'list[int]', stderr: str) -> None:
         logger.debug('run_command(%s, %s, %s, %s)', command, args, fds, stderr)
         if command == 'ferny.askpass':
             await self._askpass_command(args, fds, stderr)
@@ -222,13 +224,13 @@ class AskpassHandler(InteractionHandler):
 
 
 class InteractionAgent:
-    handlers: Dict[str, InteractionHandler]
+    handlers: 'dict[str, InteractionHandler]'
     ours: socket.socket
     theirs: socket.socket
     buffer: bytes
     connected: bool
 
-    def __init__(self, handler: Optional[InteractionHandler] = None) -> None:
+    def __init__(self, handler: 'InteractionHandler | None' = None) -> None:
         self.buffer = b''
         self.ours, self.theirs = socket.socketpair()
         self.connected = False
@@ -244,7 +246,7 @@ class InteractionAgent:
     def fileno(self) -> int:
         return self.theirs.fileno()
 
-    async def invoke_command(self, stderr: bytes, command_blob: bytes, fds: List[int]) -> None:
+    async def invoke_command(self, stderr: bytes, command_blob: bytes, fds: 'list[int]') -> None:
         logger.debug('invoke_command(%s, %s, %s)', stderr, command_blob, fds)
         try:
             command, args = ast.literal_eval(command_blob.decode('utf-8'))
@@ -273,7 +275,7 @@ class InteractionAgent:
         # Various bits of code call .pop() on the list to claim a particular
         # fd, but the ones that remain are our responsibility to close: we do
         # that at the end of each loop iteration, in the finally: block.
-        fds: List[int] = []
+        fds: 'list[int]' = []
 
         with self.ours:
             while not self.connected:

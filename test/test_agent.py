@@ -1,7 +1,6 @@
 import asyncio
 import os
 import sys
-from typing import List, Tuple
 
 import pytest
 
@@ -160,7 +159,9 @@ class RaiseResponder(ferny.AskpassHandler):
     async def do_askpass(self, messages: str, prompt: str, hint: str) -> None:
         raise ValueError(messages, prompt, hint)
 
-    async def do_custom_command(self, command: str, args: Tuple, fds: List[int], stderr: str) -> None:
+    async def do_custom_command(
+        self, command: str, args: 'tuple[object, ...]', fds: 'list[int]', stderr: str
+    ) -> None:
         raise ValueError(command, args, fds, stderr)
 
 
