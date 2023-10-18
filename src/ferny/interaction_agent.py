@@ -24,7 +24,7 @@ import os
 import re
 import socket
 import tempfile
-from typing import Any, ClassVar, Generator, Sequence, TextIO
+from typing import Any, Callable, ClassVar, Generator, Sequence
 
 from . import interaction_client
 
@@ -74,22 +74,6 @@ def get_running_loop() -> asyncio.AbstractEventLoop:
     except AttributeError:
         # Python 3.6
         return asyncio.get_event_loop()
-
-
-# https://discuss.python.org/t/expanding-asyncio-support-for-socket-apis/19277/8
-async def wait_readable(fd: int) -> None:
-    loop = get_running_loop()
-    future = loop.create_future()
-
-    def _ready() -> None:
-        if not future.cancelled():
-            future.set_result(None)
-    loop.add_reader(fd, _ready)
-
-    try:
-        await future
-    finally:
-        loop.remove_reader(fd)
 
 
 class InteractionHandler:
@@ -151,28 +135,6 @@ class AskpassHandler(InteractionHandler):
         See doc/interaction-protocol.md
         """
 
-    async def _askpass_task(self, args: 'list[str]', env: 'dict[str, str]',
-                            status: TextIO, stdout: TextIO, stderr: str) -> None:
-        logger.debug('_askpass_task(%s, %d, %s, %s, %s)', args, len(env), status, stdout, stderr)
-
-        if len(args) == 2:
-            # normal askpass
-            answer = await self.do_askpass(stderr, args[1], env.get('SSH_ASKPASS_PROMPT', ''))
-            if answer is not None:
-                print(answer, file=stdout)
-                print(0, file=status)
-
-        elif len(args) == 6:
-            # KnownHostsCommand
-            argv0, reason, host, algorithm, key, fingerprint = args
-            if reason in ['ADDRESS', 'HOSTNAME']:
-                if await self.do_hostkey(reason, host, algorithm, key, fingerprint):
-                    print(host, algorithm, key, file=stdout)
-            print(0, file=status)
-
-        else:
-            logger.error('Incorrect number of command-line arguments to ferny-askpass: %s', args)
-
     async def _askpass_command(self, args: 'tuple[object, ...]', fds: 'list[int]', stderr: str) -> None:
         logger.debug('_askpass_command(%s, %s, %s)', args, fds, stderr)
         try:
@@ -187,33 +149,42 @@ class AskpassHandler(InteractionHandler):
             return
 
         with open(fds.pop(0), 'w') as status, open(fds.pop(0), 'w') as stdout:
-            loop = get_running_loop()
-            future = loop.create_future()
-
-            # We want to wait until either of these things happen:
-            #   - our handler function finishes running
-            #   - status fd closes from the other side (ie: askpass was killed)
-            def _done(task: 'asyncio.Task | None' = None) -> None:
-                if not future.done():
-                    future.set_result(None)
-
-            task = loop.create_task(self._askpass_task(argv, env, status, stdout, stderr))
-            task.add_done_callback(_done)
-            loop.add_reader(status, _done)
-
-            # We need to handle cancellation of our task — do our cleanup as a
-            # finally: block.
             try:
-                await future
+                loop = get_running_loop()
+                try:
+                    task = asyncio.current_task()
+                except AttributeError:
+                    task = asyncio.Task.current_task()  # type:ignore[attr-defined] # (Python 3.6)
+                assert task is not None
+                loop.add_reader(status, task.cancel)
+
+                if len(argv) == 2:
+                    # normal askpass
+                    prompt = argv[1]
+                    hint = env.get('SSH_ASKPASS_PROMPT', '')
+                    logger.debug('do_askpass(%r, %r, %r)', stderr, prompt, hint)
+                    answer = await self.do_askpass(stderr, prompt, hint)
+                    logger.debug('do_askpass answer %r', answer)
+                    if answer is not None:
+                        print(answer, file=stdout)
+                        print(0, file=status)
+
+                elif len(argv) == 6:
+                    # KnownHostsCommand
+                    argv0, reason, host, algorithm, key, fingerprint = argv
+                    if reason in ['ADDRESS', 'HOSTNAME']:
+                        logger.debug('do_hostkey(%r, %r, %r, %r, %r)', reason, host, algorithm, key, fingerprint)
+                        if await self.do_hostkey(reason, host, algorithm, key, fingerprint):
+                            print(host, algorithm, key, file=stdout)
+                    else:
+                        logger.debug('ignoring KnownHostsCommand reason %r', reason)
+
+                    print(0, file=status)
+
+                else:
+                    logger.error('Incorrect number of command-line arguments to ferny-askpass: %s', argv)
             finally:
-                # If the status fd closed first then we need to cancel the
-                # askpass task.  In any case, we collect its result to make
-                # sure any exceptions get propagated.
                 loop.remove_reader(status)
-                with contextlib.suppress(asyncio.CancelledError):
-                    if not task.done():
-                        task.cancel()
-                    await task
 
     async def run_command(self, command: str, args: 'tuple[object, ...]', fds: 'list[int]', stderr: str) -> None:
         logger.debug('run_command(%s, %s, %s, %s)', command, args, fds, stderr)
@@ -224,29 +195,61 @@ class AskpassHandler(InteractionHandler):
 
 
 class InteractionAgent:
-    handlers: 'dict[str, InteractionHandler]'
-    ours: socket.socket
-    theirs: socket.socket
-    buffer: bytes
-    connected: bool
+    _handlers: 'dict[str, InteractionHandler]'
 
-    def __init__(self, handlers: Sequence[InteractionHandler] = ()) -> None:
-        self.buffer = b''
-        self.ours, self.theirs = socket.socketpair()
-        self.connected = False
-        self.handlers = {}
+    _loop: asyncio.AbstractEventLoop
 
-        for handler in handlers:
-            for command in handler.commands:
-                self.handlers[command] = handler
+    _tasks: 'set[asyncio.Task]'
 
-    def fileno(self) -> int:
-        return self.theirs.fileno()
+    _buffer: bytearray
+    _ours: socket.socket
+    _theirs: socket.socket
 
-    async def invoke_command(self, stderr: bytes, command_blob: bytes, fds: 'list[int]') -> None:
-        logger.debug('invoke_command(%s, %s, %s)', stderr, command_blob, fds)
+    _completion_future: 'asyncio.Future[str]'
+    _pending_result: 'None | str | Exception' = None
+    _end: bool = False
+
+    def _consider_completion(self) -> None:
+        logger.debug('_consider_completion(%r)', self)
+
+        if self._pending_result is None or self._tasks:
+            logger.debug('  but not ready yet')
+
+        elif self._completion_future.done():
+            logger.debug('  but already complete')
+
+        elif isinstance(self._pending_result, str):
+            logger.debug('  submitting stderr (%r) to completion_future', self._pending_result)
+            self._completion_future.set_result(self._pending_result)
+
+        else:
+            logger.debug('  submitting exception (%r) to completion_future')
+            self._completion_future.set_exception(self._pending_result)
+
+    def _result(self, result: 'str | Exception') -> None:
+        logger.debug('_result(%r, %r)', self, result)
+
+        if self._pending_result is None:
+            self._pending_result = result
+
+        if self._ours.fileno() != -1:
+            logger.debug('  remove_reader(%r)', self._ours)
+            self._loop.remove_reader(self._ours.fileno())
+
+        for task in self._tasks:
+            logger.debug('    cancel(%r)', task)
+            task.cancel()
+
+        logger.debug('  closing sockets')
+        self._theirs.close()  # idempotent
+        self._ours.close()
+
+        self._consider_completion()
+
+    def _invoke_command(self, stderr: bytes, command_blob: bytes, fds: 'list[int]') -> None:
+        logger.debug('_invoke_command(%r, %r, %r)', stderr, command_blob, fds)
         try:
-            command, args = ast.literal_eval(command_blob.decode('utf-8'))
+            command, args = ast.literal_eval(command_blob.decode())
             if not isinstance(command, str) or not isinstance(args, tuple):
                 raise TypeError('Invalid argument types')
         except (UnicodeDecodeError, SyntaxError, ValueError, TypeError) as exc:
@@ -254,59 +257,152 @@ class InteractionAgent:
             return
 
         if command == 'ferny.end':
-            logger.debug('  ferny.end -> setting connected=True')
-            self.connected = True
+            self._end = True
+            self._result(self._buffer.decode(errors='replace'))
             return
 
         try:
-            handler = self.handlers[command]
+            handler = self._handlers[command]
         except KeyError:
             logger.error('Received unhandled ferny command: %s', command)
             return
 
-        await handler.run_command(command, args, fds, stderr.decode('utf-8'))
+        # The task is responsible for the list of fds and removing itself
+        # from the set.
+        task_fds = list(fds)
+        task = self._loop.create_task(handler.run_command(command, args, task_fds, stderr.decode()))
+
+        def bottom_half(completed_task: asyncio.Task) -> None:
+            assert completed_task is task
+            while task_fds:
+                os.close(task_fds.pop())
+            self._tasks.remove(task)
+
+            try:
+                task.result()
+                logger.debug('%r completed cleanly', handler)
+            except asyncio.CancelledError:
+                # this is not an error — it just means ferny-askpass exited via signal
+                logger.debug('%r was cancelled', handler)
+            except Exception as exc:
+                logger.debug('%r raised %r', handler, exc)
+                self._result(exc)
+
+            self._consider_completion()
+
+        task.add_done_callback(bottom_half)
+        self._tasks.add(task)
+        fds[:] = []
+
+    def _got_data(self, data: bytes, fds: 'list[int]') -> None:
+        logger.debug('_got_data(%r, %r)', data, fds)
+
+        if data == b'':
+            self._result(self._buffer.decode(errors='replace'))
+            return
+
+        self._buffer.extend(data)
+
+        # Read zero or more "remote" messages
+        chunks = COMMAND_RE.split(self._buffer)
+        self._buffer = bytearray(chunks.pop())
+        while len(chunks) > 1:
+            self._invoke_command(chunks[0], chunks[1], [])
+            chunks = chunks[2:]
+
+        # Maybe read one "local" message
+        if fds:
+            assert self._buffer.endswith(b'\0'), self._buffer
+            stderr = self._buffer[:-1]
+            self._buffer = bytearray(b'')
+            with open(fds.pop(0), 'rb') as command_channel:
+                command = command_channel.read()
+            self._invoke_command(stderr, command, fds)
+
+    def _read_ready(self) -> None:
+        try:
+            data, fds, _flags, _addr = recv_fds(self._ours, 4096, 10, flags=socket.MSG_DONTWAIT)
+        except BlockingIOError:
+            return
+        except OSError as exc:
+            self._result(exc)
+        else:
+            self._got_data(data, fds)
+        finally:
+            while fds:
+                os.close(fds.pop())
+
+    def __init__(
+        self,
+        handlers: Sequence[InteractionHandler],
+        loop: 'asyncio.AbstractEventLoop | None' = None,
+        done_callback: 'Callable[[asyncio.Future[str]], None] | None' = None,
+    ) -> None:
+        self._loop = loop or get_running_loop()
+        self._completion_future = self._loop.create_future()
+        self._tasks = set()
+        self._handlers = {}
+
+        for handler in handlers:
+            for command in handler.commands:
+                self._handlers[command] = handler
+
+        if done_callback is not None:
+            self._completion_future.add_done_callback(done_callback)
+
+        self._theirs, self._ours = socket.socketpair(socket.AF_UNIX, socket.SOCK_STREAM)
+        self._buffer = bytearray()
+
+    def fileno(self) -> int:
+        return self._theirs.fileno()
+
+    def start(self) -> None:
+        logger.debug('start(%r)', self)
+        if self._ours.fileno() != -1:
+            logger.debug('  add_reader(%r)', self._ours)
+            self._loop.add_reader(self._ours.fileno(), self._read_ready)
+        else:
+            logger.debug('  ...but agent is already finished.')
+
+        logger.debug('  close(%r)', self._theirs)
+        self._theirs.close()
+
+    def force_completion(self) -> None:
+        logger.debug('force_completion(%r)', self)
+
+        # read any residual data on stderr, but don't process commands, and
+        # don't block
+        try:
+            if self._ours.fileno() != -1:
+                logger.debug('  draining pending stderr data (non-blocking)')
+                with contextlib.suppress(BlockingIOError):
+                    while True:
+                        data = self._ours.recv(4096, socket.MSG_DONTWAIT)
+                        logger.debug('    got %d bytes', len(data))
+                        if not data:
+                            break
+                        self._buffer.extend(data)
+        except OSError as exc:
+            self._result(exc)
+        else:
+            self._result(self._buffer.decode(errors='replace'))
 
     async def communicate(self) -> None:
-        self.theirs.close()
-
-        # Various bits of code call .pop() on the list to claim a particular
-        # fd, but the ones that remain are our responsibility to close: we do
-        # that at the end of each loop iteration, in the finally: block.
-        fds: 'list[int]' = []
-
-        with self.ours:
-            while not self.connected:
-                try:
-                    # Wait for a message to come in, and read it
-                    await wait_readable(self.ours.fileno())
-                    data, fds, _flags, _addr = recv_fds(self.ours, 4096, 10)
-                    if not data:
-                        raise InteractionError(self.buffer.decode('utf-8').strip())
-
-                    # Add to the buffer
-                    self.buffer += data
-
-                    # Read zero or more "remote" messages
-                    chunks = COMMAND_RE.split(self.buffer)
-                    while len(chunks) > 1:
-                        await self.invoke_command(chunks[0], chunks[1], [])
-                        chunks = chunks[2:]
-                    self.buffer = chunks[0]
-
-                    # Maybe read one "local" message
-                    if fds:
-                        assert self.buffer.endswith(b'\0'), self.buffer
-                        stderr = self.buffer[:-1]
-                        self.buffer = b''
-                        with open(fds.pop(0), 'rb') as command_channel:
-                            command = command_channel.read()
-                        await self.invoke_command(stderr, command, fds)
-
-                finally:
-                    while fds:
-                        os.close(fds.pop())
-
-        logger.debug('agent.communicate() complete.')
+        logger.debug('_communicate(%r)', self)
+        try:
+            self.start()
+            # We assume that we are the only ones to write to
+            # self._completion_future.  If we directly await it, though, it can
+            # also have a asyncio.CancelledError posted to it from outside.
+            # Shield it to prevent that from happening.
+            stderr = await asyncio.shield(self._completion_future)
+            logger.debug('_communicate(%r) stderr result is %r', self, stderr)
+        finally:
+            logger.debug('_communicate finished.  Ensuring completion.')
+            self.force_completion()
+        if not self._end:
+            logger.debug('_communicate never saw ferny.end.  raising InteractionError.')
+            raise InteractionError(stderr.strip())
 
 
 def write_askpass_to_tmpdir(tmpdir: str) -> str:
