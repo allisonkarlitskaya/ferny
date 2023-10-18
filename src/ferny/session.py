@@ -141,7 +141,7 @@ class Session(SubprocessContext, InteractionHandler):
                 '-o', 'StrictHostKeyChecking=yes',
             ])
 
-        agent = InteractionAgent(interaction_responder)
+        agent = InteractionAgent([interaction_responder] if interaction_responder is not None else [])
 
         # SSH_ASKPASS_REQUIRE is not generally available, so use setsid
         process = await asyncio.create_subprocess_exec(

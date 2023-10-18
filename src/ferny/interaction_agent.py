@@ -230,18 +230,15 @@ class InteractionAgent:
     buffer: bytes
     connected: bool
 
-    def __init__(self, handler: 'InteractionHandler | None' = None) -> None:
+    def __init__(self, handlers: Sequence[InteractionHandler] = ()) -> None:
         self.buffer = b''
         self.ours, self.theirs = socket.socketpair()
         self.connected = False
         self.handlers = {}
 
-        if handler is not None:
-            self.add_handler(handler)
-
-    def add_handler(self, handler: InteractionHandler) -> None:
-        for command in handler.commands:
-            self.handlers[command] = handler
+        for handler in handlers:
+            for command in handler.commands:
+                self.handlers[command] = handler
 
     def fileno(self) -> int:
         return self.theirs.fileno()

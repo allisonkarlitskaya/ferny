@@ -203,7 +203,7 @@ async def test_mock_askpass(msg_id: str) -> None:
 
     # Spawn ferny-askpass to talk to a running agent which simply replies with
     # the name of the type of prompt object that was created.
-    agent = ferny.InteractionAgent(MockResponder())
+    agent = ferny.InteractionAgent([MockResponder()])
     askpass_cmd = [sys.executable, ferny.interaction_client.__file__, message]
     askpass = subprocess.Popen(askpass_cmd, stderr=agent.fileno(), stdout=subprocess.PIPE, universal_newlines=True)
 
@@ -227,7 +227,7 @@ async def test_mock_stderr(msg_id: str) -> None:
 
     # Spawn ferny-askpass to talk to a running agent which simply replies with
     # the name of the type of prompt object that was created.
-    agent = ferny.InteractionAgent(MockResponder())
+    agent = ferny.InteractionAgent([MockResponder()])
     os.write(agent.fileno(), message.encode())
 
     with pytest.raises(ferny.SshError) as ssh_exc:
