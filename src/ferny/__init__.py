@@ -30,3 +30,5 @@ __all__ = [
     'temporary_askpass',
     'write_askpass_to_tmpdir',
 ]
+
+__version__ = '0'
