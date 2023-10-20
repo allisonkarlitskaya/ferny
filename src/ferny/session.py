@@ -26,7 +26,7 @@ import subprocess
 import tempfile
 from typing import Mapping, Sequence
 
-from . import errors
+from . import ssh_errors
 from .interaction_agent import InteractionAgent, InteractionError, InteractionHandler, write_askpass_to_tmpdir
 
 prctl = ctypes.cdll.LoadLibrary('libc.so.6').prctl
@@ -158,7 +158,7 @@ class Session(SubprocessContext, InteractionHandler):
             self._process = process
         except InteractionError as exc:
             await process.wait()
-            raise errors.get_exception_for_ssh_stderr(str(exc)) from None
+            raise ssh_errors.get_exception_for_ssh_stderr(str(exc)) from None
         except BaseException:
             # If we get here because the InteractionHandler raised an
             # exception then SSH might still be running, and may even attempt

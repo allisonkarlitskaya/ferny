@@ -31,7 +31,7 @@ class SshError(Exception):
         self.stderr = stderr
 
 
-class AuthenticationError(SshError):
+class SshAuthenticationError(SshError):
     PATTERN = re.compile(r'^([^:]+): Permission denied \(([^()]+)\)\.$', re.M)
 
     def __init__(self, match: Match, stderr: str) -> None:
@@ -42,16 +42,16 @@ class AuthenticationError(SshError):
 
 
 # generic host key error for OSes without KnownHostsCommand support
-class HostKeyError(SshError):
+class SshHostKeyError(SshError):
     PATTERN = re.compile(r'^Host key verification failed.$', re.M)
 
 
 # specific errors for OSes with KnownHostsCommand
-class UnknownHostKeyError(HostKeyError):
+class SshUnknownHostKeyError(SshHostKeyError):
     PATTERN = re.compile(r'^No .* host key is known.*Host key verification failed.$', re.S | re.M)
 
 
-class ChangedHostKeyError(HostKeyError):
+class SshChangedHostKeyError(SshHostKeyError):
     PATTERN = re.compile(r'warning.*remote host identification has changed', re.I)
 
 
@@ -100,8 +100,8 @@ oserror_subclass_map = dict((errnum, cls) for cls, errnum in [
 
 
 def get_exception_for_ssh_stderr(stderr: str) -> Exception:
-    # check for the specific error messages first, then for generic HostKeyError
-    for ssh_cls in [AuthenticationError, ChangedHostKeyError, UnknownHostKeyError, HostKeyError]:
+    # check for the specific error messages first, then for generic SshHostKeyError
+    for ssh_cls in [SshAuthenticationError, SshChangedHostKeyError, SshUnknownHostKeyError, SshHostKeyError]:
         match = ssh_cls.PATTERN.search(stderr)
         if match is not None:
             return ssh_cls(match, stderr)

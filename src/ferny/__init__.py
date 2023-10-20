@@ -1,4 +1,3 @@
-from .errors import AuthenticationError, ChangedHostKeyError, HostKeyError, SshError, UnknownHostKeyError
 from .interaction_agent import (
     BEIBOOT_GADGETS,
     COMMAND_TEMPLATE,
@@ -10,23 +9,46 @@ from .interaction_agent import (
     write_askpass_to_tmpdir,
 )
 from .session import Session
-from .ssh_askpass import AskpassPrompt, SshAskpassResponder
+from .ssh_askpass import (
+    AskpassPrompt,
+    SshAskpassResponder,
+    SshFIDOPINPrompt,
+    SshFIDOUserPresencePrompt,
+    SshHostKeyPrompt,
+    SshPassphrasePrompt,
+    SshPasswordPrompt,
+    SshPKCS11PINPrompt,
+)
+from .ssh_errors import (
+    SshAuthenticationError,
+    SshChangedHostKeyError,
+    SshError,
+    SshHostKeyError,
+    SshUnknownHostKeyError,
+)
 
 __all__ = [
-    'AskpassPrompt',
     'AskpassHandler',
-    'AuthenticationError',
+    'AskpassPrompt',
     'BEIBOOT_GADGETS',
     'COMMAND_TEMPLATE',
-    'ChangedHostKeyError',
-    'HostKeyError',
+    'FernyTransport',
     'InteractionAgent',
     'InteractionError',
     'InteractionHandler',
     'Session',
     'SshAskpassResponder',
+    'SshAuthenticationError',
+    'SshChangedHostKeyError',
     'SshError',
-    'UnknownHostKeyError',
+    'SshFIDOPINPrompt',
+    'SshFIDOUserPresencePrompt',
+    'SshHostKeyError',
+    'SshHostKeyPrompt',
+    'SshPKCS11PINPrompt',
+    'SshPassphrasePrompt',
+    'SshPasswordPrompt',
+    'SshUnknownHostKeyError',
     'temporary_askpass',
     'write_askpass_to_tmpdir',
 ]
