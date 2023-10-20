@@ -31,7 +31,7 @@ ASKPASS_MESSAGES: 'dict[str, tuple[str, str, dict[str, str]]]' = {
         ED25519 key fingerprint is SHA256:+DiY3wvvV6TuJJhbpZisF/zLDA0zPMSvHdkr4UvCOqU.
         This key is not known by any other names
         Are you sure you want to continue connecting (yes/no/[fingerprint])? """,
-        'HostKeyPrompt', {
+        'SshHostKeyPrompt', {
             'algorithm': 'ED25519',
             'fingerprint': 'SHA256:+DiY3wvvV6TuJJhbpZisF/zLDA0zPMSvHdkr4UvCOqU',
         }
@@ -43,7 +43,7 @@ ASKPASS_MESSAGES: 'dict[str, tuple[str, str, dict[str, str]]]' = {
         This host key is known by the following other names/addresses:
             x:1: example.com
         Are you sure you want to continue connecting (yes/no/[fingerprint])? """,
-        'HostKeyPrompt', {
+        'SshHostKeyPrompt', {
             'algorithm': 'ED25519',
             'fingerprint': 'SHA256:+DiY3wvvV6TuJJhbpZisF/zLDA0zPMSvHdkr4UvCOqU',
         }
@@ -51,14 +51,14 @@ ASKPASS_MESSAGES: 'dict[str, tuple[str, str, dict[str, str]]]' = {
 
     'passphrase': (
         r"""Enter passphrase for key '/var/home/lis/.ssh/id_rsa': """,
-        'PassphrasePrompt', {
+        'SshPassphrasePrompt', {
             'filename': '/var/home/lis/.ssh/id_rsa',
         }
     ),
 
     'password': (
         r"""lis@srv's password: """,
-        'PasswordPrompt', {
+        'SshPasswordPrompt', {
             'username': 'lis',
             'hostname': 'srv',
         }
@@ -66,7 +66,7 @@ ASKPASS_MESSAGES: 'dict[str, tuple[str, str, dict[str, str]]]' = {
 
     'FIDO PIN': (
         r"""Enter PIN for ED25519-SK key /var/home/lis/.ssh/id_ed25519_sk: """,
-        'FIDOPINPrompt', {
+        'SshFIDOPINPrompt', {
             'algorithm': 'ED25519-SK',
             'filename': '/var/home/lis/.ssh/id_ed25519_sk',
         }
@@ -75,7 +75,7 @@ ASKPASS_MESSAGES: 'dict[str, tuple[str, str, dict[str, str]]]' = {
     'User presence': (
         r"""Confirm user presence for key ED25519-SK SHA256:fAxxFFykCijTdrVUUjbbi2TWfCWtOiafhuBhgG7siGg
         """,
-        'FIDOUserPresencePrompt', {
+        'SshFIDOUserPresencePrompt', {
             'algorithm': 'ED25519-SK',
             'fingerprint': 'SHA256:fAxxFFykCijTdrVUUjbbi2TWfCWtOiafhuBhgG7siGg',
         }
@@ -99,9 +99,9 @@ ASKPASS_MESSAGES: 'dict[str, tuple[str, str, dict[str, str]]]' = {
         }
     ),
 
-    'PKCS11PINPrompt': (
+    'SshPKCS11PINPrompt': (
         r"""Enter PIN for '/CN=SSH-key/': """,
-        'PKCS11PINPrompt', {
+        'SshPKCS11PINPrompt', {
             'pkcs11_id': '/CN=SSH-key/',
         }
     ),
@@ -121,7 +121,7 @@ ASKPASS_MESSAGES: 'dict[str, tuple[str, str, dict[str, str]]]' = {
 
 
 STDERR_MESSAGES = {
-    'ChangedHostKeyError': r"""
+    'SshChangedHostKeyError': r"""
     @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
     @    WARNING: REMOTE HOST IDENTIFICATION HAS CHANGED!     @
     @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
@@ -137,7 +137,7 @@ STDERR_MESSAGES = {
     Host key verification failed.
     """,
 
-    'UnknownHostKeyError': r"""
+    'SshUnknownHostKeyError': r"""
     No ED25519 host key is known for srv and you have requested strict checking.
     Host key verification failed.
     """,
@@ -148,7 +148,7 @@ STDERR_MESSAGES = {
     # lis@github.com: Permission denied (publickey).
     # """,
 
-    'AuthenticationError': r"""
+    'SshAuthenticationError': r"""
     xyz@srv: Permission denied (publickey,gssapi-keyex,gssapi-with-mic).
     """,
 
@@ -185,7 +185,7 @@ def test_categorize_askpass(msg_id: str) -> None:
 def test_categorize_errors(msg_id: str) -> None:
     expected_type = msg_id.split()[0]
     message = textwrap.dedent(STDERR_MESSAGES[msg_id])
-    exc = ferny.errors.get_exception_for_ssh_stderr(message)
+    exc = ferny.ssh_errors.get_exception_for_ssh_stderr(message)
     assert exc.__class__.__name__ == expected_type
 
 
@@ -236,6 +236,6 @@ async def test_mock_stderr(msg_id: str) -> None:
         try:
             await agent.communicate()
         except ferny.InteractionError as int_exc:
-            raise ferny.errors.get_exception_for_ssh_stderr(str(int_exc)) from None
+            raise ferny.ssh_errors.get_exception_for_ssh_stderr(str(int_exc)) from None
 
     assert ssh_exc.value.__class__.__name__ == expected_type

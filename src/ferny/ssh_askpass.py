@@ -77,7 +77,7 @@ HELPERS = {
 }
 
 
-class PasswordPrompt(SSHAskpassPrompt):
+class SshPasswordPrompt(SSHAskpassPrompt):
     _pattern = r"%{username}@%{hostname}'s password: "
     username: 'str | None' = None
     hostname: 'str | None' = None
@@ -86,7 +86,7 @@ class PasswordPrompt(SSHAskpassPrompt):
         return await responder.do_password_prompt(self)
 
 
-class PassphrasePrompt(SSHAskpassPrompt):
+class SshPassphrasePrompt(SSHAskpassPrompt):
     _pattern = r"Enter passphrase for key '%{filename}': "
     filename: str
 
@@ -94,7 +94,7 @@ class PassphrasePrompt(SSHAskpassPrompt):
         return await responder.do_passphrase_prompt(self)
 
 
-class FIDOPINPrompt(SSHAskpassPrompt):
+class SshFIDOPINPrompt(SSHAskpassPrompt):
     _pattern = r"Enter PIN for %{algorithm} key %{filename}: "
     algorithm: str
     filename: str
@@ -103,7 +103,7 @@ class FIDOPINPrompt(SSHAskpassPrompt):
         return await responder.do_fido_pin_prompt(self)
 
 
-class FIDOUserPresencePrompt(SSHAskpassPrompt):
+class SshFIDOUserPresencePrompt(SSHAskpassPrompt):
     _pattern = r"Confirm user presence for key %{algorithm} %{fingerprint}\n"
     answers = ()
     algorithm: str
@@ -113,7 +113,7 @@ class FIDOUserPresencePrompt(SSHAskpassPrompt):
         return await responder.do_fido_user_presence_prompt(self)
 
 
-class PKCS11PINPrompt(SSHAskpassPrompt):
+class SshPKCS11PINPrompt(SSHAskpassPrompt):
     _pattern = r"Enter PIN for '%{pkcs11_id}': "
     pkcs11_id: str
 
@@ -121,7 +121,7 @@ class PKCS11PINPrompt(SSHAskpassPrompt):
         return await responder.do_pkcs11_pin_prompt(self)
 
 
-class HostKeyPrompt(SSHAskpassPrompt):
+class SshHostKeyPrompt(SSHAskpassPrompt):
     _pattern = r"Are you sure you want to continue connecting \(yes/no(/\[fingerprint\])?\)\? "
     _extra_patterns = [
         r"%{fingerprint}[.]$",
@@ -146,12 +146,12 @@ def with_helpers(pattern: str) -> str:
 
 def categorize_ssh_prompt(string: str, stderr: str) -> AskpassPrompt:
     classes = [
-        FIDOPINPrompt,
-        FIDOUserPresencePrompt,
-        HostKeyPrompt,
-        PKCS11PINPrompt,
-        PassphrasePrompt,
-        PasswordPrompt,
+        SshFIDOPINPrompt,
+        SshFIDOUserPresencePrompt,
+        SshHostKeyPrompt,
+        SshPKCS11PINPrompt,
+        SshPassphrasePrompt,
+        SshPasswordPrompt,
     ]
 
     # The last line is the line after the last newline character, excluding the
@@ -181,20 +181,20 @@ class SshAskpassResponder(AskpassHandler):
         # Default fallback for unrecognised message types: unimplemented
         return None
 
-    async def do_fido_pin_prompt(self, prompt: FIDOPINPrompt) -> 'str | None':
+    async def do_fido_pin_prompt(self, prompt: SshFIDOPINPrompt) -> 'str | None':
         return await self.do_prompt(prompt)
 
-    async def do_fido_user_presence_prompt(self, prompt: FIDOUserPresencePrompt) -> 'str | None':
+    async def do_fido_user_presence_prompt(self, prompt: SshFIDOUserPresencePrompt) -> 'str | None':
         return await self.do_prompt(prompt)
 
-    async def do_host_key_prompt(self, prompt: HostKeyPrompt) -> 'str | None':
+    async def do_host_key_prompt(self, prompt: SshHostKeyPrompt) -> 'str | None':
         return await self.do_prompt(prompt)
 
-    async def do_pkcs11_pin_prompt(self, prompt: PKCS11PINPrompt) -> 'str | None':
+    async def do_pkcs11_pin_prompt(self, prompt: SshPKCS11PINPrompt) -> 'str | None':
         return await self.do_prompt(prompt)
 
-    async def do_passphrase_prompt(self, prompt: PassphrasePrompt) -> 'str | None':
+    async def do_passphrase_prompt(self, prompt: SshPassphrasePrompt) -> 'str | None':
         return await self.do_prompt(prompt)
 
-    async def do_password_prompt(self, prompt: PasswordPrompt) -> 'str | None':
+    async def do_password_prompt(self, prompt: SshPasswordPrompt) -> 'str | None':
         return await self.do_prompt(prompt)

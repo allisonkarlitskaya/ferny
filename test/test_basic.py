@@ -156,7 +156,7 @@ class TestBasic:
 
     @pytest.mark.asyncio
     async def test_reject_hostkey(self, key_dir: pathlib.Path, runtime_dir: pathlib.Path) -> None:
-        with pytest.raises(ferny.HostKeyError) as raises:
+        with pytest.raises(ferny.SshHostKeyError) as raises:
             await self.run_test(key_dir, runtime_dir, False, FloatingPointError(), handle_host_key=True)
 
         # got one host key request with a sensible RSA key
@@ -166,7 +166,7 @@ class TestBasic:
 
         if ferny.session.has_feature('KnownHostsCommand'):
             # on modern OSes we get a specific error message
-            assert isinstance(raises.value, ferny.UnknownHostKeyError)
+            assert isinstance(raises.value, ferny.SshUnknownHostKeyError)
             assert 'No RSA host key is known for [127.0.0.1]:' in str(raises.value)
             assert 'Host key verification failed.' in str(raises.value)
             assert reason == 'HOSTNAME'
@@ -193,7 +193,7 @@ class TestBasic:
 
     @pytest.mark.asyncio
     async def test_wrong_passphrase(self, key_dir: pathlib.Path, runtime_dir: pathlib.Path) -> None:
-        with pytest.raises(ferny.AuthenticationError) as raises:
+        with pytest.raises(ferny.SshAuthenticationError) as raises:
             await self.run_test(key_dir, runtime_dir, True, 'xx', handle_host_key=True)
         assert 'Permission denied' in str(raises.value)
         assert 'publickey' in raises.value.methods
@@ -222,7 +222,7 @@ class TestBasic:
     @pytest.mark.asyncio
     async def test_known_host_changed(self, key_dir: pathlib.Path, runtime_dir: pathlib.Path) -> None:
         # reject new host key
-        with pytest.raises(ferny.ChangedHostKeyError) as raises:
+        with pytest.raises(ferny.SshChangedHostKeyError) as raises:
             await self.run_test(key_dir, runtime_dir, False, 'passphrase',
                                 handle_host_key=True, known_host_key=NONMATCHING_HOSTKEY)
         assert 'WARNING: REMOTE HOST IDENTIFICATION HAS CHANGED' in str(raises.value)
@@ -233,7 +233,7 @@ class TestBasic:
                                 handle_host_key=True, known_host_key=NONMATCHING_HOSTKEY)
         else:
             # without KnownHostsCommand, we can't prompt
-            with pytest.raises(ferny.ChangedHostKeyError) as raises:
+            with pytest.raises(ferny.SshChangedHostKeyError) as raises:
                 await self.run_test(key_dir, runtime_dir, True, 'passphrase',
                                     handle_host_key=True, known_host_key=NONMATCHING_HOSTKEY)
             assert 'WARNING: REMOTE HOST IDENTIFICATION HAS CHANGED' in str(raises.value)
@@ -245,7 +245,7 @@ class TestBasic:
     @pytest.mark.asyncio
     async def test_no_host_key_unknown(self, key_dir: pathlib.Path, runtime_dir: pathlib.Path) -> None:
         # note we only get a generic HostKeyError here, not Unknown*, as we don't enable KnownHostsCommand
-        with pytest.raises(ferny.HostKeyError) as raises:
+        with pytest.raises(ferny.SshHostKeyError) as raises:
             await self.run_test(key_dir, runtime_dir, False, 'passphrase',
                                 handle_host_key=False)
         assert str(raises.value) == 'Host key verification failed.'
@@ -261,7 +261,7 @@ class TestBasic:
 
     @pytest.mark.asyncio
     async def test_no_host_key_changed(self, key_dir: pathlib.Path, runtime_dir: pathlib.Path) -> None:
-        with pytest.raises(ferny.ChangedHostKeyError) as raises:
+        with pytest.raises(ferny.SshChangedHostKeyError) as raises:
             await self.run_test(key_dir, runtime_dir, ZeroDivisionError(), 'passphrase',
                                 handle_host_key=False, known_host_key=NONMATCHING_HOSTKEY)
         assert 'WARNING: REMOTE HOST IDENTIFICATION HAS CHANGED' in str(raises.value)
