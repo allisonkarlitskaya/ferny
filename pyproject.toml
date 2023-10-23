@@ -22,9 +22,6 @@ write_to = "src/ferny/_version.py"
 
 [tool.mypy]
 mypy_path = 'src'
-[[tool.mypy.overrides]]
-module = ["mockssh"]
-ignore_missing_imports = true
 
 [tool.pylint]
 max-line-length = 118

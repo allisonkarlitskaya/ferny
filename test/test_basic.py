@@ -1,24 +1,18 @@
+import asyncio
 import glob
 import os
 import pathlib
 import shutil
 import socket
-import subprocess
+from typing import Sequence
 
-import mockssh
+import asyncssh
 import pytest
 
 import ferny
 
 os.environ.pop('SSH_AUTH_SOCK', None)
 os.environ.pop('SSH_ASKPASS', None)
-
-# some host key which isn't the one from mock-ssh
-NONMATCHING_HOSTKEY = (
-    'ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDWdxkgPs4niiaW41P8NiKjI3slCoeaRQvvchTHCyvQMGOanv+iudgurkc' +
-    'VvJOWOHsbLdxSfW5KbF1bGpVu3nwjbA7rajDx8Xs4z6VLsd4WCrHJl0qZt5GFfYTriIiPfE1t/C9MIxA1Vfxz099DBQDgs9' +
-    '6kt7EidP2cBTb1rWGjBAt71jlfuxH4g1+emuPcuhdY3PFH5Ac7IwG5So3jxUWB7esDiO7StoKcAU2iJzp8yFLOrekYn8IA9' +
-    'cAxyzgYzlnqs8S/6aFrm/xTYAb1YIGyLUoyQgAIQW4MlILxq5opS3+YUYZaBLZRYoI2vkqqF+ULeqdZzgcOSLe4cbE3bZql')
 
 
 class MockResponder(ferny.SshAskpassResponder):
@@ -58,7 +52,7 @@ def key_dir(tmp_path: pathlib.Path, pytestconfig: pytest.Config) -> pathlib.Path
     # copy all test/id_* files to the temporary directory with 0600 permissions
     keydir = tmp_path / 'keys'
     keydir.mkdir()
-    for key in glob.glob(f'{pytestconfig.rootpath}/test/id_*'):
+    for key in glob.glob(f'{pytestconfig.rootpath}/test/keys/*'):
         dest = keydir / os.path.basename(key)
         shutil.copy(key, dest)
         os.chmod(dest, 0o600)
@@ -104,10 +98,39 @@ async def test_dns_error(runtime_dir: pathlib.Path) -> None:
         await session.connect('¡invalid hostname!')
 
 
-# these both come from mockssh and aren't interesting to us
-@pytest.mark.filterwarnings('ignore:.*setDaemon.* is deprecated:DeprecationWarning')
-@pytest.mark.filterwarnings('ignore::pytest.PytestUnhandledThreadExceptionWarning')
-@pytest.mark.filterwarnings('ignore::cryptography.utils.CryptographyDeprecationWarning')
+class MySSHServer(asyncssh.SSHServer):
+    connection: 'asyncssh.SSHServerConnection | None' = None
+
+    def connection_made(self, connection: asyncssh.SSHServerConnection) -> None:
+        self.connection = connection
+
+    def password_auth_supported(self) -> bool:
+        return False
+
+    def begin_auth(self, username: str) -> bool:
+        assert self.connection is not None
+        self.connection.set_authorized_keys(f'test/users/{username}.authorized_keys')
+        return True
+
+    def validate_password(self, username: str, password: str) -> bool:
+        try:
+            with open(f'test/users/{username}.passwd') as file:
+                return password == file.read().strip()
+        except FileNotFoundError:
+            return False
+
+
+def handle_client(process: asyncssh.SSHServerProcess) -> None:
+    process.stdout.write('remotecmd\n')
+    process.exit(0)
+
+
+async def ssh_server() -> asyncssh.SSHAcceptor:
+    return await asyncssh.listen('127.0.0.1', 0,
+                                 server_host_keys=['test/keys/hostkey_ed25519', 'test/keys/hostkey_rsa'],
+                                 server_factory=MySSHServer, process_factory=handle_client)
+
+
 class TestBasic:
     @staticmethod
     async def run_test(
@@ -115,37 +138,39 @@ class TestBasic:
         runtime_dir: pathlib.Path,
         accept_hostkey: 'Exception | bool',
         passphrase: 'Exception | str',
-        known_host_key: 'str | None' = None,
+        known_host_keys: Sequence[str] = ('hostkey_ed25519.pub', 'hostkey_rsa.pub'),
         handle_host_key: bool = False,
     ) -> None:
         responder = MockResponder(accept_hostkey, passphrase)
-        users = {'admin': 'test/id_rsa'}
         known_hosts = key_dir / 'known_hosts'
 
-        with mockssh.Server(users) as server:
-            if known_host_key == 'scan':
-                known_host_key = subprocess.check_output(['ssh-keyscan', '-p', str(server.port), '127.0.0.1'],
-                                                         universal_newlines=True)
-                known_hosts.write_text(known_host_key)
-            elif known_host_key:
-                known_hosts.write_text(f'[127.0.0.1]:{server.port} {known_host_key}')
+        async with await ssh_server() as server:
+            host, port = server.sockets[0].getsockname()
+            hostkeys = []
+            for filename in known_host_keys:
+                key = (key_dir / filename).read_text()
+                hostkeys.append(f'[{host}]:{port} {key}\n')
+            known_hosts.write_text(''.join(hostkeys))
 
             session = ferny.Session()
             await session.connect(
-                server.host,
-                port=server.port,
+                host,
+                port=port,
                 configfile='none',
                 handle_host_key=handle_host_key,
-                identity_file=os.path.join(key_dir, 'id_rsa.enc'),
+                identity_file=os.path.join(key_dir, 'id_ed25519_passphrase'),
                 login_name='admin',
                 options=dict(userknownhostsfile=str(known_hosts)),
                 interaction_responder=responder)
 
             # if we get that far, we have successfully authenticated
-            p = subprocess.run(session.wrap_subprocess_args(['sh', '-ec', 'echo dmcetomer | rev']),
-                               stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)
-            assert p.stdout == b'remotecmd\n'
-            assert p.stderr == b''
+            wrapped = session.wrap_subprocess_args(['echo', 'remotecmd'])
+            proc = await asyncio.create_subprocess_exec(*wrapped,
+                                                        stdout=asyncio.subprocess.PIPE,
+                                                        stderr=asyncio.subprocess.PIPE)
+            stdout, stderr = await proc.communicate()
+            assert stdout == b'remotecmd\n'
+            assert stderr == b''
 
             assert os.listdir(runtime_dir) == ['ferny']
             await session.disconnect()
@@ -157,7 +182,8 @@ class TestBasic:
     @pytest.mark.asyncio
     async def test_reject_hostkey(self, key_dir: pathlib.Path, runtime_dir: pathlib.Path) -> None:
         with pytest.raises(ferny.SshHostKeyError) as raises:
-            await self.run_test(key_dir, runtime_dir, False, FloatingPointError(), handle_host_key=True)
+            await self.run_test(key_dir, runtime_dir, False, FloatingPointError(),
+                                handle_host_key=True, known_host_keys=())
 
         # got one host key request with a sensible RSA key
         assert MockResponder.askpass_args == []
@@ -167,11 +193,11 @@ class TestBasic:
         if ferny.session.has_feature('KnownHostsCommand'):
             # on modern OSes we get a specific error message
             assert isinstance(raises.value, ferny.SshUnknownHostKeyError)
-            assert 'No RSA host key is known for [127.0.0.1]:' in str(raises.value)
+            assert 'No ED25519 host key is known for [127.0.0.1]:' in str(raises.value)
             assert 'Host key verification failed.' in str(raises.value)
             assert reason == 'HOSTNAME'
             assert host.startswith('[127.0.0.1]:')  # plus random port
-            assert algorithm == 'ssh-rsa'
+            assert algorithm == 'ssh-ed25519'
             assert key.startswith('AAAA')
             assert fingerprint.startswith('SHA256:')  # depends on mock-ssh implementation
         else:
@@ -184,7 +210,8 @@ class TestBasic:
     @pytest.mark.asyncio
     async def test_raise_hostkey(self, key_dir: pathlib.Path, runtime_dir: pathlib.Path) -> None:
         with pytest.raises(ZeroDivisionError):
-            await self.run_test(key_dir, runtime_dir, ZeroDivisionError(), FloatingPointError(), handle_host_key=True)
+            await self.run_test(key_dir, runtime_dir, ZeroDivisionError(), FloatingPointError(),
+                                known_host_keys=(), handle_host_key=True)
 
     @pytest.mark.asyncio
     async def test_raise_passphrase(self, key_dir: pathlib.Path, runtime_dir: pathlib.Path) -> None:
@@ -194,48 +221,48 @@ class TestBasic:
     @pytest.mark.asyncio
     async def test_wrong_passphrase(self, key_dir: pathlib.Path, runtime_dir: pathlib.Path) -> None:
         with pytest.raises(ferny.SshAuthenticationError) as raises:
-            await self.run_test(key_dir, runtime_dir, True, 'xx', handle_host_key=True)
+            await self.run_test(key_dir, runtime_dir, True, 'xx', known_host_keys=(), handle_host_key=True)
         assert 'Permission denied' in str(raises.value)
         assert 'publickey' in raises.value.methods
         assert len(MockResponder.hostkey_args) == 1
         assert len(MockResponder.askpass_args) == 3  # default NumberOfPasswordPrompts
         _messages, prompt, hint = MockResponder.askpass_args[0]
         assert 'Enter passphrase for key' in prompt
-        assert 'keys/id_rsa.enc' in prompt
+        assert 'keys/id_ed25519_passphrase' in prompt
 
     @pytest.mark.asyncio
     async def test_correct_passphrase(self, key_dir: pathlib.Path, runtime_dir: pathlib.Path) -> None:
-        await self.run_test(key_dir, runtime_dir, True, 'passphrase', handle_host_key=True)
+        await self.run_test(key_dir, runtime_dir, True, 'passphrase', known_host_keys=(), handle_host_key=True)
         assert len(MockResponder.hostkey_args) == 1
         assert len(MockResponder.askpass_args) == 1
         _messages, prompt, hint = MockResponder.askpass_args[0]
         assert 'Enter passphrase for key' in prompt
-        assert 'keys/id_rsa.enc' in prompt
+        assert 'keys/id_ed25519_passphrase' in prompt
 
     @pytest.mark.asyncio
     async def test_known_host_good(self, key_dir: pathlib.Path, runtime_dir: pathlib.Path) -> None:
         # this calls do_hostkey() for the already known key, just in case it wants to supply additional keys
         # don't do this and don't accept any, just rely on the existing one
         await self.run_test(key_dir, runtime_dir, False, 'passphrase',
-                            handle_host_key=True, known_host_key='scan')
+                            handle_host_key=True)
 
     @pytest.mark.asyncio
     async def test_known_host_changed(self, key_dir: pathlib.Path, runtime_dir: pathlib.Path) -> None:
         # reject new host key
         with pytest.raises(ferny.SshChangedHostKeyError) as raises:
             await self.run_test(key_dir, runtime_dir, False, 'passphrase',
-                                handle_host_key=True, known_host_key=NONMATCHING_HOSTKEY)
+                                handle_host_key=True, known_host_keys=['wrong_hostkey.pub'])
         assert 'WARNING: REMOTE HOST IDENTIFICATION HAS CHANGED' in str(raises.value)
 
         # accept new host key
         if ferny.session.has_feature('KnownHostsCommand'):
             await self.run_test(key_dir, runtime_dir, True, 'passphrase',
-                                handle_host_key=True, known_host_key=NONMATCHING_HOSTKEY)
+                                handle_host_key=True, known_host_keys=['wrong_hostkey.pub'])
         else:
             # without KnownHostsCommand, we can't prompt
             with pytest.raises(ferny.SshChangedHostKeyError) as raises:
                 await self.run_test(key_dir, runtime_dir, True, 'passphrase',
-                                    handle_host_key=True, known_host_key=NONMATCHING_HOSTKEY)
+                                    handle_host_key=True, known_host_keys=['wrong_hostkey.pub'])
             assert 'WARNING: REMOTE HOST IDENTIFICATION HAS CHANGED' in str(raises.value)
 
     #
@@ -247,7 +274,7 @@ class TestBasic:
         # note we only get a generic HostKeyError here, not Unknown*, as we don't enable KnownHostsCommand
         with pytest.raises(ferny.SshHostKeyError) as raises:
             await self.run_test(key_dir, runtime_dir, False, 'passphrase',
-                                handle_host_key=False)
+                                handle_host_key=False, known_host_keys=())
         assert str(raises.value) == 'Host key verification failed.'
         assert len(MockResponder.hostkey_args) == 1
         assert len(MockResponder.askpass_args) == 0
@@ -255,7 +282,7 @@ class TestBasic:
     @pytest.mark.asyncio
     async def test_no_host_key_known(self, key_dir: pathlib.Path, runtime_dir: pathlib.Path) -> None:
         await self.run_test(key_dir, runtime_dir, ZeroDivisionError(), 'passphrase',
-                            handle_host_key=False, known_host_key='scan')
+                            handle_host_key=False)
         assert len(MockResponder.hostkey_args) == 0
         assert len(MockResponder.askpass_args) == 1
 
@@ -263,7 +290,7 @@ class TestBasic:
     async def test_no_host_key_changed(self, key_dir: pathlib.Path, runtime_dir: pathlib.Path) -> None:
         with pytest.raises(ferny.SshChangedHostKeyError) as raises:
             await self.run_test(key_dir, runtime_dir, ZeroDivisionError(), 'passphrase',
-                                handle_host_key=False, known_host_key=NONMATCHING_HOSTKEY)
+                                handle_host_key=False, known_host_keys=['wrong_hostkey.pub'])
         assert 'WARNING: REMOTE HOST IDENTIFICATION HAS CHANGED' in str(raises.value)
         # FIXME: we don't currently prompt in this case, although we eventually should
         assert len(MockResponder.hostkey_args) == 0
