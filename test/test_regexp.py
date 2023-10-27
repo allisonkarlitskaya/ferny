@@ -73,8 +73,7 @@ ASKPASS_MESSAGES: 'dict[str, tuple[str, str, dict[str, str]]]' = {
     ),
 
     'User presence': (
-        r"""Confirm user presence for key ED25519-SK SHA256:fAxxFFykCijTdrVUUjbbi2TWfCWtOiafhuBhgG7siGg
-        """,
+        r"""Confirm user presence for key ED25519-SK SHA256:fAxxFFykCijTdrVUUjbbi2TWfCWtOiafhuBhgG7siGg""",
         'SshFIDOUserPresencePrompt', {
             'algorithm': 'ED25519-SK',
             'fingerprint': 'SHA256:fAxxFFykCijTdrVUUjbbi2TWfCWtOiafhuBhgG7siGg',

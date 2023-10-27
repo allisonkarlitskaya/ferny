@@ -104,7 +104,7 @@ class SshFIDOPINPrompt(SSHAskpassPrompt):
 
 
 class SshFIDOUserPresencePrompt(SSHAskpassPrompt):
-    _pattern = r"Confirm user presence for key %{algorithm} %{fingerprint}\n"
+    _pattern = r"Confirm user presence for key %{algorithm} %{fingerprint}"
     answers = ()
     algorithm: str
     fingerprint: str
