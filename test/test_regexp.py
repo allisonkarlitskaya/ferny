@@ -80,19 +80,19 @@ ASKPASS_MESSAGES: 'dict[str, tuple[str, str, dict[str, str]]]' = {
         }
     ),
 
-    'change password old prompt': (
+    'change pw old': (
         r"""Enter lis@srv's old password: """,
         'AskpassPrompt', {
         }
     ),
 
-    'change password new prompt': (
+    'change pw new': (
         r"""Enter lis@srv's new password: """,
         'AskpassPrompt', {
         }
     ),
 
-    'change password retype prompt': (
+    'change pw verify': (
         r"""Retype lis@srv's new password: """,
         'AskpassPrompt', {
         }
