@@ -170,7 +170,7 @@ class FernyTransport(asyncio.Transport, asyncio.SubprocessProtocol):
         logger.debug('_consider_disconnect(%r)', self)
         # We cannot disconnect as long as any of these three things are happening
         if not self._exec_task.done():
-            logger.debug('  exec_task still running', self._exec_task)
+            logger.debug('  exec_task still running %r', self._exec_task)
             return
 
         if self._subprocess_transport is not None and not self._transport_disconnected:
