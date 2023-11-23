@@ -61,7 +61,6 @@ class SSHAskpassPrompt(AskpassPrompt):
 
         for pattern in self._extra_patterns:
             extra_match = re.search(with_helpers(pattern), messages, re.M)
-            print(extra_match, with_helpers(pattern), messages)
             if extra_match is not None:
                 self.__dict__.update(extra_match.groupdict())
 

@@ -100,6 +100,8 @@ oserror_subclass_map = dict((errnum, cls) for cls, errnum in [
 
 
 def get_exception_for_ssh_stderr(stderr: str) -> Exception:
+    stderr = stderr.replace('\r\n', '\n')  # fix line separators
+
     # check for the specific error messages first, then for generic SshHostKeyError
     for ssh_cls in [SshAuthenticationError, SshChangedHostKeyError, SshUnknownHostKeyError, SshHostKeyError]:
         match = ssh_cls.PATTERN.search(stderr)
