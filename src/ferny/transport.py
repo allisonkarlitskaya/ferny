@@ -16,6 +16,7 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 import asyncio
+import contextlib
 import logging
 import typing
 from typing import Any, Callable, Iterable, Sequence, TypeVar
@@ -295,7 +296,9 @@ class FernyTransport(asyncio.Transport, asyncio.SubprocessProtocol):
             self._exec_task.cancel()
         if self._subprocess_transport is not None:
             logger.debug('  closing _subprocess_transport')
-            self._subprocess_transport.close()
+            # https://github.com/python/cpython/issues/112800
+            with contextlib.suppress(PermissionError):
+                self._subprocess_transport.close()
         self._agent.force_completion()
 
     def is_closing(self) -> bool:
