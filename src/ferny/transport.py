@@ -153,11 +153,8 @@ class FernyTransport(asyncio.Transport, asyncio.SubprocessProtocol):
             assert self._stdin_transport is not None
             assert self._stdout_transport is not None
 
-            # Time to go live — ask the InteractionAgent to start processing
-            # stderr and tell our protocol that we're ready to receive data.
+            # Ask the InteractionAgent to start processing stderr.
             self._agent.start()
-            logger.debug('calling connection_made(%r, %r)', self, self._protocol)
-            self._protocol.connection_made(self)
 
         self._exec_task.add_done_callback(exec_completed)
 
@@ -238,6 +235,9 @@ class FernyTransport(asyncio.Transport, asyncio.SubprocessProtocol):
 
         stderr_transport = transport.get_pipe_transport(2)
         assert stderr_transport is None
+
+        logger.debug('calling connection_made(%r, %r)', self, self._protocol)
+        self._protocol.connection_made(self)
 
     def connection_lost(self, exc: 'Exception | None') -> None:
         logger.debug('connection_lost(%r, %r)', self, exc)
