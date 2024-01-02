@@ -37,7 +37,7 @@ PR_SET_PDEATHSIG = 1
 @functools.lru_cache()
 def has_feature(feature: str, teststr: str = 'x') -> bool:
     try:
-        subprocess.check_output(['ssh', f'-o{feature} {teststr}', '-G', '-'], stderr=subprocess.DEVNULL)
+        subprocess.check_output(['ssh', f'-o{feature} {teststr}', '-G', 'nonexisting'], stderr=subprocess.DEVNULL)
         return True
     except subprocess.CalledProcessError:
         return False
