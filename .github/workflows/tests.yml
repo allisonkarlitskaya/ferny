@@ -37,3 +37,21 @@ jobs:
 
       - name: Run unit tests
         run: PYTHONPATH=src python3 -m pytest --color=yes
+
+  debian:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    container: docker.io/debian:unstable
+    steps:
+      - name: Clone repository
+        uses: actions/checkout@v3
+
+      - name: Install runtime and test dependencies
+        run: |
+          apt-get update
+          apt-get install -y python3-pytest-asyncio python3-pip openssh-client
+          pip3 install --break-system-packages asyncssh==2.13.2
+
+      - name: Run unit tests
+        # FIXME: test_cancel_askpass hangs forever
+        run: python3 -m pytest -k 'not test_cancel_askpass'
