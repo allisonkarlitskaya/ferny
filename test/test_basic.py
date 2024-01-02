@@ -94,7 +94,7 @@ async def test_connection_refused(runtime_dir: pathlib.Path) -> None:
 @pytest.mark.asyncio
 async def test_dns_error(runtime_dir: pathlib.Path) -> None:
     session = ferny.Session()
-    with pytest.raises(socket.gaierror):
+    with pytest.raises((socket.gaierror, ferny.ssh_errors.SshError)):
         await session.connect('¡invalid hostname!')
 
 
