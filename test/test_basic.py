@@ -92,10 +92,18 @@ async def test_connection_refused(runtime_dir: pathlib.Path) -> None:
 
 
 @pytest.mark.asyncio
-async def test_dns_error(runtime_dir: pathlib.Path) -> None:
+async def test_invalid_hostname_error(runtime_dir: pathlib.Path) -> None:
     session = ferny.Session()
+    # OpenSSH 0.9.6+ statically checks the name, earlier versions throw anything at the DNS resolver
     with pytest.raises((socket.gaierror, ferny.ssh_errors.SshInvalidHostnameError)):
         await session.connect('¡invalid hostname!')
+
+
+async def test_dns_error(runtime_dir: pathlib.Path) -> None:
+    session = ferny.Session()
+    # this is a validly formatted hostname
+    with pytest.raises(socket.gaierror):
+        await session.connect('nonexisting.local')
 
 
 class MySSHServer(asyncssh.SSHServer):
