@@ -151,6 +151,9 @@ STDERR_MESSAGES = {
     xyz@srv: Permission denied (publickey,gssapi-keyex,gssapi-with-mic).
     """,
 
+    'SshInvalidHostnameError': r"""hostname contains invalid characters
+    """,
+
     'SshError': r"""Something bad happened.
     """,
 }
