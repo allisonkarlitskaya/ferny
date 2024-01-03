@@ -41,6 +41,10 @@ class SshAuthenticationError(SshError):
         self.message = match.group(0)
 
 
+class SshInvalidHostnameError(SshError):
+    PATTERN = re.compile(r'^hostname contains invalid characters', re.I)
+
+
 # generic host key error for OSes without KnownHostsCommand support
 class SshHostKeyError(SshError):
     PATTERN = re.compile(r'^Host key verification failed.$', re.M)
@@ -103,7 +107,8 @@ def get_exception_for_ssh_stderr(stderr: str) -> Exception:
     stderr = stderr.replace('\r\n', '\n')  # fix line separators
 
     # check for the specific error messages first, then for generic SshHostKeyError
-    for ssh_cls in [SshAuthenticationError, SshChangedHostKeyError, SshUnknownHostKeyError, SshHostKeyError]:
+    for ssh_cls in [SshInvalidHostnameError, SshAuthenticationError,
+                    SshChangedHostKeyError, SshUnknownHostKeyError, SshHostKeyError]:
         match = ssh_cls.PATTERN.search(stderr)
         if match is not None:
             return ssh_cls(match, stderr)
