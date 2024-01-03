@@ -34,12 +34,13 @@ async def test_cancel_askpass(event_loop: asyncio.AbstractEventLoop) -> None:
 
             # askpass interaction
             python3 -m ferny.askpass 'can has pw?' &
+            ASKPASS_PID=$!
 
             # wait a moment
             sleep 0.5
 
             # kill askpass
-            kill %1
+            kill $ASKPASS_PID
 
             # log an error
             echo 'we killed askpass' >&2
