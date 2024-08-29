@@ -20,22 +20,20 @@ jobs:
       - name: Run unit tests
         run: python3 -m pytest --color=yes --cov
 
-  c8s:
+  c9s:
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    container: quay.io/centos/centos:stream8
+    container: quay.io/centos/centos:stream9
     steps:
       - name: Clone repository
         uses: actions/checkout@v3
 
       - name: Install distro runtime and test dependencies
         run: |
-          dnf install -y openssh-clients python3-pip python3-cryptography
+          dnf install -y openssh-clients python3-pip python3-cryptography python3-pytest
 
-      # C8S does have python3-pytest, but it's too old for us
       - name: Install pip test dependencies
-        # 2.14.0 and up need a too new python3-cryptography which we can't build in C8S
-        run: pip3 install pytest pytest-asyncio asyncssh==2.13.2
+        run: pip3 install pytest-asyncio asyncssh
 
       - name: Run unit tests
         run: PYTHONPATH=src python3 -m pytest --color=yes
