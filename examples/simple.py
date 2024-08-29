@@ -36,12 +36,13 @@ class PromptResponder(PromptSession, ferny.SshAskpassResponder):
 
 async def run() -> None:
     parser = argparse.ArgumentParser()
+    parser.add_argument('-p', '--port', type=int)
     parser.add_argument('host')
     parser.add_argument('cmd', nargs='+')
     args = parser.parse_args()
 
     session = ferny.Session()
-    await session.connect(args.host, interaction_responder=PromptResponder())
+    await session.connect(args.host, port=args.port, interaction_responder=PromptResponder())
     subprocess.run(session.wrap_subprocess_args(args.cmd), check=True)
     await session.disconnect()
 
