@@ -12,7 +12,7 @@ jobs:
     container: registry.fedoraproject.org/fedora:latest
     steps:
       - name: Clone repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Install runtime and test dependencies
         run: dnf install -y openssh-clients python3-asyncssh python3-pytest-cov python3-pytest-asyncio
@@ -26,7 +26,7 @@ jobs:
     container: quay.io/centos/centos:stream9
     steps:
       - name: Clone repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Install distro runtime and test dependencies
         run: |
@@ -44,7 +44,7 @@ jobs:
     container: docker.io/debian:unstable
     steps:
       - name: Clone repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Install runtime and test dependencies
         run: |
