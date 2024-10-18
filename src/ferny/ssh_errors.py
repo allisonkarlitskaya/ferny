@@ -113,6 +113,14 @@ def get_exception_for_ssh_stderr(stderr: str) -> Exception:
         if match is not None:
             return ssh_cls(match, stderr)
 
+    # chop off lines at the end which are not from ssh, like from
+    # https://gitlab.com/redhat/centos-stream/rpms/openssh/-/commit/84ad70de57
+    lines = stderr.splitlines()
+    while lines and not lines[-1].startswith('ssh: '):
+        lines.pop()
+    if lines:  # only do that if there is *any* message from ssh:
+        stderr = '\n'.join(lines)
+
     before, colon, after = stderr.rpartition(':')
     if colon and after:
         potential_strerror = after.strip()
