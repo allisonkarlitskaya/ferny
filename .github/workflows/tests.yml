@@ -20,17 +20,23 @@ jobs:
       - name: Run unit tests
         run: python3 -m pytest --color=yes --cov
 
-  c9s:
+  centos:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        tag:
+          - stream9
+          - stream10-development
     timeout-minutes: 10
-    container: quay.io/centos/centos:stream9
+    container: quay.io/centos/centos:${{ matrix.tag }}
     steps:
       - name: Clone repository
         uses: actions/checkout@v3
 
       - name: Install distro runtime and test dependencies
         run: |
-          dnf install -y openssh-clients python3-pip python3-cryptography python3-pytest
+          dnf install -y openssh-clients python3-pip python3-cryptography
 
       - name: Install pip test dependencies
         run: pip3 install pytest-asyncio asyncssh
