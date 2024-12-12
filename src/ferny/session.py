@@ -29,7 +29,7 @@ from typing import Mapping, Sequence
 from . import ssh_errors
 from .interaction_agent import InteractionAgent, InteractionError, InteractionHandler, write_askpass_to_tmpdir
 
-prctl = ctypes.cdll.LoadLibrary('libc.so.6').prctl
+prctl = ctypes.CDLL(None).prctl
 logger = logging.getLogger(__name__)
 PR_SET_PDEATHSIG = 1
 
