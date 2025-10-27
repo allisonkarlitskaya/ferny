@@ -33,7 +33,7 @@ pythonpath = ["src"]
 log_cli = true
 
 [tool.ruff]
-select = [
+lint.select = [
     "ANN",
     "A",
     "B",
@@ -43,18 +43,17 @@ select = [
     "I",
     "TID",
 ]
-ignore = [
+lint.ignore = [
     "A003",      # Class attribute is shadowing a python builtin
-    "ANN101",    # Missing type annotation for `self` in method (typing.Self is not in Python 3.6)
     "B905",      # `zip()` without an explicit `strict=` parameter (not available in Python 3.6)
 ]
 src = ["src"]
 line-length = 118
 
-[tool.ruff.flake8-annotations]
+[tool.ruff.lint.flake8-annotations]
 allow-star-arg-any = true
 
-[tool.ruff.flake8-tidy-imports.banned-api]
+[tool.ruff.lint.flake8-tidy-imports.banned-api]
 "typing.Dict".msg = "use 'dict[]' in quotes"
 "typing.List".msg = "use 'list[]' in quotes"
 "typing.Optional".msg = "use '| None' in quotes"
