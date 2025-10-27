@@ -45,7 +45,6 @@ select = [
 ]
 ignore = [
     "A003",      # Class attribute is shadowing a python builtin
-    "ANN101",    # Missing type annotation for `self` in method (typing.Self is not in Python 3.6)
     "B905",      # `zip()` without an explicit `strict=` parameter (not available in Python 3.6)
 ]
 src = ["src"]
