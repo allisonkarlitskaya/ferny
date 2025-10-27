@@ -1,5 +1,7 @@
 # ferny
 
+Do the CI test
+
 ferny is a Python API wrapped around `ssh(1)`.
 
 This project was undertaken as a replacement for our libssh-based SSH support
