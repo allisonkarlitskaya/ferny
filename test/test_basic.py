@@ -99,6 +99,7 @@ async def test_invalid_hostname_error(runtime_dir: pathlib.Path) -> None:
         await session.connect('¡invalid hostname!')
 
 
+@pytest.mark.asyncio
 async def test_dns_error(runtime_dir: pathlib.Path) -> None:
     session = ferny.Session()
     # this is a validly formatted hostname
