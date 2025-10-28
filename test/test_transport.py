@@ -265,7 +265,7 @@ async def test_askpass_exception() -> None:
     assert exc.args == ('bzzt',)
 
 
-def test_no_running_loop(event_loop: asyncio.AbstractEventLoop) -> None:
+def test_no_running_loop() -> None:
     with pytest.raises(RuntimeError, match='no running event loop'):
         if sys.version_info < (3, 7, 0):
             # 3.6 lacks asyncio.get_running_loop() and our fill for it will
@@ -274,6 +274,7 @@ def test_no_running_loop(event_loop: asyncio.AbstractEventLoop) -> None:
         ferny.FernyTransport.spawn(MockProtocol, ['true'])
 
     # ...but we can pass one in
+    event_loop = asyncio.new_event_loop()
     transport, _protocol = ferny.FernyTransport.spawn(MockProtocol, ['true'], loop=event_loop)
     transport.close()
 
@@ -372,7 +373,7 @@ async def test_flow_control() -> None:
 
 
 @pytest.mark.asyncio
-async def test_eof_buffered(tmp_path: Path, event_loop: asyncio.AbstractEventLoop) -> None:
+async def test_eof_buffered(tmp_path: Path) -> None:
     pipe = str(tmp_path / 'fifo')
     os.mkfifo(pipe)
     transport, protocol = ferny.FernyTransport.spawn(MockProtocol, ['dd', 'bs=1k', f'of={pipe}'])
@@ -387,6 +388,7 @@ async def test_eof_buffered(tmp_path: Path, event_loop: asyncio.AbstractEventLoo
 
     # we should now be able to read that all back, with the EOF.
     with open(pipe, 'rb') as reader:
+        event_loop = asyncio.get_running_loop()
         all_data = await event_loop.run_in_executor(None, reader.read)
     assert len(all_data) == 10000 * 4096 + 1
     assert all_data.endswith(b'y')
@@ -408,7 +410,7 @@ async def test_eof_buffered(tmp_path: Path, event_loop: asyncio.AbstractEventLoo
 # flush the buffer, but SubprocessTransport.close() immediately kills the
 # subprocess.  We might change this.
 @pytest.mark.asyncio
-async def test_close_buffered(event_loop: asyncio.AbstractEventLoop) -> None:
+async def test_close_buffered() -> None:
     transport, protocol = ferny.FernyTransport.spawn(MockProtocol, ['sleep', 'inf'])
     await protocol.called_with('connection_made', transport)
 

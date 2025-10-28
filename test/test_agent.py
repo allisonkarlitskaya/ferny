@@ -24,7 +24,7 @@ class SpeakSlow(ferny.SshAskpassResponder):
 
 
 @pytest.mark.asyncio
-async def test_cancel_askpass(event_loop: asyncio.AbstractEventLoop) -> None:
+async def test_cancel_askpass() -> None:
     speak_slow = SpeakSlow()
     agent = ferny.InteractionAgent([speak_slow])
     process = await asyncio.create_subprocess_shell(
@@ -59,7 +59,7 @@ async def test_cancel_askpass(event_loop: asyncio.AbstractEventLoop) -> None:
 
 
 @pytest.mark.asyncio
-async def test_cancel_agent_during_interaction(event_loop: asyncio.AbstractEventLoop) -> None:
+async def test_cancel_agent_during_interaction() -> None:
     speak_slow = SpeakSlow()
     agent = ferny.InteractionAgent([speak_slow])
     process = await asyncio.create_subprocess_shell(
@@ -76,6 +76,7 @@ async def test_cancel_agent_during_interaction(event_loop: asyncio.AbstractEvent
         env=dict(os.environ, PYTHONPATH=':'.join(sys.path)))
 
     # Communicate in a task
+    event_loop = asyncio.get_running_loop()
     communicate_task = event_loop.create_task(agent.communicate())
 
     # Wait until we got our prompt
@@ -91,7 +92,7 @@ async def test_cancel_agent_during_interaction(event_loop: asyncio.AbstractEvent
 
 
 @pytest.mark.asyncio
-async def test_cancel_agent_on_init(event_loop: asyncio.AbstractEventLoop) -> None:
+async def test_cancel_agent_on_init() -> None:
     speak_slow = SpeakSlow()
     agent = ferny.InteractionAgent([speak_slow])
     process = await asyncio.create_subprocess_shell(
@@ -108,6 +109,7 @@ async def test_cancel_agent_on_init(event_loop: asyncio.AbstractEventLoop) -> No
         env=dict(os.environ, PYTHONPATH=':'.join(sys.path)))
 
     # Communicate in a task
+    event_loop = asyncio.get_running_loop()
     communicate_task = event_loop.create_task(agent.communicate())
 
     # Wait until we got our "init"
@@ -123,7 +125,7 @@ async def test_cancel_agent_on_init(event_loop: asyncio.AbstractEventLoop) -> No
 
 
 @pytest.mark.asyncio
-async def test_cancel_before_interaction(event_loop: asyncio.AbstractEventLoop) -> None:
+async def test_cancel_before_interaction() -> None:
     speak_slow = SpeakSlow()
     agent = ferny.InteractionAgent([speak_slow])
     process = await asyncio.create_subprocess_shell(
@@ -140,6 +142,7 @@ async def test_cancel_before_interaction(event_loop: asyncio.AbstractEventLoop) 
         env=dict(os.environ, PYTHONPATH=':'.join(sys.path)))
 
     # Communicate in a task
+    event_loop = asyncio.get_running_loop()
     communicate_task = event_loop.create_task(agent.communicate())
 
     # Let the task start running
