@@ -22,14 +22,23 @@ write_to = "src/ferny/_version.py"
 
 [tool.mypy]
 mypy_path = 'src'
+strict = true
 
 [tool.pytest.ini_options]
 timeout = 30
 addopts = ["--strict-markers"]
 pythonpath = ["src"]
 log_cli = true
+asyncio_default_fixture_loop_scope = 'function'
 
 [tool.ruff]
+src = ["src"]
+line-length = 118
+
+[tool.ruff.format]
+quote-style = "preserve"
+
+[tool.ruff.lint]
 select = [
     "ANN",
     "A",
@@ -42,16 +51,13 @@ select = [
 ]
 ignore = [
     "A003",      # Class attribute is shadowing a python builtin
-    "ANN101",    # Missing type annotation for `self` in method (typing.Self is not in Python 3.6)
     "B905",      # `zip()` without an explicit `strict=` parameter (not available in Python 3.6)
 ]
-src = ["src"]
-line-length = 118
 
-[tool.ruff.flake8-annotations]
+[tool.ruff.lint.flake8-annotations]
 allow-star-arg-any = true
 
-[tool.ruff.flake8-tidy-imports.banned-api]
+[tool.ruff.lint.flake8-tidy-imports.banned-api]
 "typing.Dict".msg = "use 'dict[]' in quotes"
 "typing.List".msg = "use 'list[]' in quotes"
 "typing.Optional".msg = "use '| None' in quotes"

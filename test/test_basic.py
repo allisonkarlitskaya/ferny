@@ -129,7 +129,7 @@ class MySSHServer(asyncssh.SSHServer):
             return False
 
 
-def handle_client(process: asyncssh.SSHServerProcess) -> None:
+def handle_client(process: asyncssh.SSHServerProcess[str]) -> None:
     process.stdout.write('remotecmd\n')
     process.exit(0)
 
