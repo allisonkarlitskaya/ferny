@@ -134,7 +134,7 @@ class FernyTransport(asyncio.Transport, asyncio.SubprocessProtocol):
         # bottom-half handler below.
         self._exec_task = loop.create_task(loop.subprocess_exec(lambda: self, *args, **kwargs))
 
-        def exec_completed(task: asyncio.Task) -> None:
+        def exec_completed(task: "asyncio.Task[tuple[asyncio.SubprocessTransport, typing.Self]]") -> None:
             logger.debug('exec_completed(%r, %r)', self, task)
             assert task is self._exec_task
             try:
@@ -362,11 +362,11 @@ class FernyTransport(asyncio.Transport, asyncio.SubprocessProtocol):
         assert self._stdin_transport is not None
         return self._stdin_transport.set_write_buffer_limits(high, low)
 
-    def write(self, data: bytes) -> None:
+    def write(self, data: 'bytes | bytearray | memoryview') -> None:
         assert self._stdin_transport is not None
         return self._stdin_transport.write(data)
 
-    def writelines(self, list_of_data: Iterable[bytes]) -> None:
+    def writelines(self, list_of_data: 'Iterable[bytes | bytearray | memoryview]') -> None:
         assert self._stdin_transport is not None
         return self._stdin_transport.writelines(list_of_data)
 

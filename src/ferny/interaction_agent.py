@@ -35,7 +35,7 @@ COMMAND_RE = re.compile(b'\0ferny\0([^\n]*)\0\0\n')
 COMMAND_TEMPLATE = '\0ferny\0{(command, args)!r}\0\0\n'
 
 BEIBOOT_GADGETS = {
-    "command": fr"""
+    "command": rf"""
         import sys
         def command(command, *args):
             sys.stderr.write(f{COMMAND_TEMPLATE!r})
@@ -63,8 +63,8 @@ except AttributeError:
         fds = array.array("i")
         msg, ancdata, flags, addr = sock.recvmsg(bufsize, socket.CMSG_LEN(maxfds * fds.itemsize))
         for cmsg_level, cmsg_type, cmsg_data in ancdata:
-            if (cmsg_level == socket.SOL_SOCKET and cmsg_type == socket.SCM_RIGHTS):
-                fds.frombytes(cmsg_data[:len(cmsg_data) - (len(cmsg_data) % fds.itemsize)])
+            if cmsg_level == socket.SOL_SOCKET and cmsg_type == socket.SCM_RIGHTS:
+                fds.frombytes(cmsg_data[: len(cmsg_data) - (len(cmsg_data) % fds.itemsize)])
         return msg, list(fds), flags, addr
 
 
@@ -199,7 +199,7 @@ class InteractionAgent:
 
     _loop: asyncio.AbstractEventLoop
 
-    _tasks: 'set[asyncio.Task]'
+    _tasks: 'set[asyncio.Task[None]]'
 
     _buffer: bytearray
     _ours: socket.socket
@@ -246,7 +246,7 @@ class InteractionAgent:
 
         self._consider_completion()
 
-    def _invoke_command(self, stderr: bytes, command_blob: bytes, fds: 'list[int]') -> None:
+    def _invoke_command(self, stderr: 'bytes | bytearray', command_blob: bytes, fds: 'list[int]') -> None:
         logger.debug('_invoke_command(%r, %r, %r)', stderr, command_blob, fds)
         try:
             command, args = ast.literal_eval(command_blob.decode())
@@ -272,7 +272,7 @@ class InteractionAgent:
         task_fds = list(fds)
         task = self._loop.create_task(handler.run_command(command, args, task_fds, stderr.decode()))
 
-        def bottom_half(completed_task: asyncio.Task) -> None:
+        def bottom_half(completed_task: 'asyncio.Task[None]') -> None:
             assert completed_task is task
             while task_fds:
                 os.close(task_fds.pop())

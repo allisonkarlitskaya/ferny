@@ -75,7 +75,7 @@ class SubprocessContext:
 
 class Session(SubprocessContext, InteractionHandler):
     # Set after .connect() called, even if failed
-    _controldir: 'tempfile.TemporaryDirectory | None' = None
+    _controldir: 'tempfile.TemporaryDirectory[str] | None' = None
     _controlsock: 'str | None' = None
 
     # Set if connected, else None

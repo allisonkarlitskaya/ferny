@@ -55,7 +55,7 @@ class SSHAskpassPrompt(AskpassPrompt):
     # `_extra_patterns` can fill in extra class attributes if they match.
     _extra_patterns: ClassVar[Sequence[str]] = ()
 
-    def __init__(self, prompt: str, messages: str, stderr: str, match: Match) -> None:
+    def __init__(self, prompt: str, messages: str, stderr: str, match: 'Match[str]') -> None:
         super().__init__(prompt, messages, stderr)
         self.__dict__.update(match.groupdict())
 
