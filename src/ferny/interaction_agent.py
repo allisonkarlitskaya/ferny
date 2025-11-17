@@ -199,7 +199,7 @@ class InteractionAgent:
 
     _loop: asyncio.AbstractEventLoop
 
-    _tasks: 'set[asyncio.Task]'
+    _tasks: 'set[asyncio.Task[None]]'
 
     _buffer: bytearray
     _ours: socket.socket
@@ -272,7 +272,7 @@ class InteractionAgent:
         task_fds = list(fds)
         task = self._loop.create_task(handler.run_command(command, args, task_fds, stderr.decode()))
 
-        def bottom_half(completed_task: asyncio.Task) -> None:
+        def bottom_half(completed_task: 'asyncio.Task[None]') -> None:
             assert completed_task is task
             while task_fds:
                 os.close(task_fds.pop())

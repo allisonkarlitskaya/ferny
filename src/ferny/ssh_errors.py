@@ -24,9 +24,9 @@ from typing import ClassVar, Iterable, Match, Pattern
 
 
 class SshError(Exception):
-    PATTERN: ClassVar[Pattern]
+    PATTERN: 'ClassVar[Pattern[str]]'
 
-    def __init__(self, match: 'Match | None', stderr: str) -> None:
+    def __init__(self, match: 'Match[str] | None', stderr: str) -> None:
         super().__init__(match.group(0) if match is not None else stderr)
         self.stderr = stderr
 
@@ -34,7 +34,7 @@ class SshError(Exception):
 class SshAuthenticationError(SshError):
     PATTERN = re.compile(r'^([^:]+): Permission denied \(([^()]+)\)\.$', re.M)
 
-    def __init__(self, match: Match, stderr: str) -> None:
+    def __init__(self, match: 'Match[str]', stderr: str) -> None:
         super().__init__(match, stderr)
         self.destination = match.group(1)
         self.methods = match.group(2).split(',')
