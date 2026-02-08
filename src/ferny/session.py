@@ -145,7 +145,7 @@ class Session(SubprocessContext, InteractionHandler):
 
         # SSH_ASKPASS_REQUIRE is not generally available, so use setsid
         process = await asyncio.create_subprocess_exec(
-            *('/usr/bin/ssh', *args, destination), env=env,
+            *('/usr/bin/env ssh', *args, destination), env=env,
             start_new_session=True, stdin=asyncio.subprocess.DEVNULL,
             stdout=asyncio.subprocess.DEVNULL, stderr=agent,  # type: ignore
             preexec_fn=lambda: prctl(PR_SET_PDEATHSIG, signal.SIGKILL))
